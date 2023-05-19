@@ -15,3 +15,6 @@
 *.docx
 *.pickle
 *.pth
+*.model
+model_dnn
+model_siamese
