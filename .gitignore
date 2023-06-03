@@ -11,6 +11,7 @@
 *.txt
 *.obj
 5.9.23
+5.16.23_Pressure
 *.doc
 *.docx
 *.pickle
@@ -19,3 +20,5 @@
 model_dnn
 model_siamese
 model_triplet
+experiments
+DNN_CV_template
