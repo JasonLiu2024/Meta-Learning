@@ -6,6 +6,7 @@
 **pov: you need to upload file F to folder T on your remote server**
 
 </span>
+
 >scp -rp path_of_F server_address:path_of_T
 
 where: 
