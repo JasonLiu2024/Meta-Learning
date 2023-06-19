@@ -22,3 +22,4 @@ model_siamese
 model_triplet
 experiments
 DNN_CV_template
+__pycache__
