@@ -51,3 +51,26 @@ in English, this does:
 </span>
 
 This is because your notebook need to refresh to access updated version of that python file. In Visual Studio Code, this is 'reload' the python kernel
+
+<span style="color:#33FF9E">
+
+**pov: you run into github authentication problem (ECONNREFUSED; authentication failed)**
+
+</span>
+
+need to follow: 
+1. generate new token (github Settings->developer settings; use the classic one)
+2. (after removing the current origin that doesn't work, re-add it as follows:)
+>git remote add origin https://<token>@<git_url>.git
+
+for example, if your token is abcd, your github link says https://github.com/user/this.git, then you enter:
+>git remote add origin https://abcd@github.com/user/this.git
+3. do a pull: 
+>git pull https://<token>@<git_url>.git
+
+following above example, this becomes:
+>git pull https://abcd@github.com/user/this.git
+
+NOTE: this lets you catch up where you left off (when you first got stuck at the authentication error)
+
+reference: https://stackoverflow.com/questions/68193573/git-push-returns-missing-or-invalid-credentials-code-econnrefused-remote-r
