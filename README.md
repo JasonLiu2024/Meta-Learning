@@ -27,7 +27,7 @@ where:
 <br>to go to session:
 >tmux attach-session -t session_name
 
-<br>&emsp;Note: you cannot scroll while in a session
+&emsp;Note: you cannot scroll while in a session
 
 to detach from session:
 >^b D
