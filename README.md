@@ -44,6 +44,10 @@ to run notebook N.ipynb (need to include extension!)
 in English, this does:
 <br>&emsp;run the notebook ('execute') -> turn the result to notebook (so that you get the notebook printout <- works for graphs like matplotlib)
 
-# **Setup and How To Run**
-Step 1:
-<br>run load_data.ipynb
+<span style="color:#33FF9E">
+
+**pov: your jupyter notebook doesn't let you use stuff from a python file (no code errors)**
+
+</span>
+
+This is because your notebook need to refresh to access updated version of that python file. In Visual Studio Code, this is 'reload' the python kernel
