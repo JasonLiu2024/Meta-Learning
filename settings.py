@@ -18,8 +18,11 @@ siamese_settings_dictionary = {
     'input type'        : "vectors",
     'input meaning'     : "spectrum", 
     'output'            : "samples from a distribution",
-    'output type'        : "one number",
-    'output meaning'     : "temperature or pressure, depending on distribution",
+    'output type'       : "one number",
+    'output meaning'    : "temperature or pressure, depending on distribution",
     'number of ways'    : 2,
-    'number of shots'   : 1
+    'number of shots'   : 1,
+    'number of folds'   : 8,
+    'support-query ratio': 0.8,
+    'task size'         : 5
 }
