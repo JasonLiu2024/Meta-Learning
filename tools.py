@@ -1,4 +1,6 @@
 import torch
+import data_accessor as acc
+import random
 
 # add scheduler
 # https://arxiv.org/abs/1711.05101
@@ -55,3 +57,44 @@ class EarlyStopping():
                 # it's stopping time! :C
                 # no need reset early_stop, because we only use it once
                 self.early_stop = True 
+class TaskDataset(torch.utils.data.TensorDataset):
+    """ input: input data
+        label: label
+        indices: indices used e.g. training indices
+        """
+    def __init__(self, input, label, indices, ratio, size, device):
+        # X is already normalized
+        self.input = torch.from_numpy(input).to(device)
+        self.label = torch.from_numpy(label).to(device)
+        self.task_indices = acc.get_task_indices(indices=indices, ratio=ratio, size=size)
+        self.indices = range(len(self.task_indices))
+    def __len__(self):
+        return len(self.indices)
+    def __getitem__(self, index):
+        support_indices, query_indices = self.task_indices[index]
+        support_input = self.input[support_indices]
+        support_label = self.label[support_indices]
+        query_input =   self.input[query_indices]
+        query_label =   self.label[query_indices] 
+        return support_input, support_label, query_input, query_label
+class SiameseDataset(torch.utils.data.TensorDataset):
+    """ input: input data
+        label: label
+        indices: indices used e.g. training indices
+        """
+    def __init__(self, input, label, indices, device):
+        # X is already normalized
+        self.input = torch.from_numpy(input).to(device)
+        self.label = torch.from_numpy(label).to(device)
+        self.access_indices = indices
+        self.indices = range(len(self.access_indices))
+    def __len__(self):
+        return len(self.indices)
+    def __getitem__(self, index): # assume index lies within subset_X_IDs
+        index = self.access_indices[index]
+        other_index = random.choice(self.access_indices)
+        input_1 = self.input[index]
+        input_2 = self.input[other_index]
+        label_1 = self.label[index]
+        label_2 = self.label[other_index]
+        return input_1, label_1, input_2, label_2
