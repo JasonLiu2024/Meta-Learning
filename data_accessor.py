@@ -23,8 +23,8 @@ def load_data(datafile):
         type_of_input:  printout info"""
     with open(datafile, 'rb') as file:
         raw_input, raw_output = pickle.load(file)
-    print(f"\traw input shape (number, dimension): {raw_input.shape}")
-    print(f"\traw output shape (number_dimension): {raw_output.shape}")
+    print(f"\tinput shape (number, dimension): {raw_input.shape}")
+    print(f"\tlabel shape (number, dimension): {raw_output.shape}")
     return raw_input, raw_output
 
 def load_indices(indicesfile):
@@ -43,7 +43,7 @@ def get_task_indices(indices, ratio, size):
         GIVE: indices, as numpy array
         indices:    list of indices  
         ratio:      support-query split
-        size:       number of examples per task"""
+        size:       total number of examples per task"""
     indices = np.asarray(indices) # convert to array to index with list
     count = indices.shape[0]
     # list comprehension; ok to overshoot indices (list ignores the overshoot)
