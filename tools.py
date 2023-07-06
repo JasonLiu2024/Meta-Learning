@@ -1,14 +1,34 @@
 import torch
 import data_accessor as acc
 import random
+import matplotlib.pyplot as plt
 
-# add scheduler
-# https://arxiv.org/abs/1711.05101
-# Adam can substantially benefit from a scheduled learning rate multiplier. 
-# The fact that Adam is an adaptive gradient algorithm and as such adapts 
-# the learning rate for each parameter does not rule out the possibility to 
-# substantially improve its performance by using a global learning rate 
-# multiplier, scheduled, e.g., by cosine annealing.
+class SaveBestModel():
+    def __init__(self, folder_address, current_best_loss = float('inf')):
+        self.current_best_loss = current_best_loss
+        self.save = False
+        self.folder = folder_address
+    def __call__(self, current_loss, model, round):
+        # no save optimizer, since we are using model for inference
+        if current_loss < self.current_best_loss:
+            self.current_best_loss = current_loss
+            self.save = True
+        if self.save == True:
+            torch.save(model.state_dict(), self.folder + f'CV={round}' + '.pth')
+
+class SaveBestCrossValidationModel():
+    def __init__(self, folder_address, current_best_loss = float('inf')):
+        self.current_best_loss = current_best_loss
+        self.save = False
+        self.folder = folder_address
+        self.best_model_name = None
+    def __call__(self, current_loss, round):
+        # no save optimizer, since we are using model for inference
+        if current_loss < self.current_best_loss:
+            # print(f"current loss {current_loss} < {self.current_best_loss}")
+            self.current_best_loss = current_loss
+            self.best_model_name = f'CV={round}' + '.pth'
+
 class Scheduler():
     def __init__(self, optimizer, patience, minimum_learning_rate, factor):
         # wait 'patience' number of epochs to change learning rate
@@ -31,13 +51,10 @@ class Scheduler():
     def __call__(self, validation_loss):
         self.scheduler.step(validation_loss)
 
-# early stopping (patience step)
-# https://debuggercafe.com/using-learning-rate-scheduler-and-early-stopping
-# -with-pytorch/
-class EarlyStopping():
+class PatienceEarlyStopping():
     def __init__(self, patience, min_delta):
-        # if no improvement after 'patience' epochs, stop training
-        # to count as improvement, need to change by 'min_delta' amount
+        """ if no improvement after 'patience' epochs, stop training
+        to count as improvement, need to change by 'min_delta' amount"""
         self.patience = patience
         self.min_delta = min_delta
         self.counter = 0
@@ -46,17 +63,15 @@ class EarlyStopping():
     def __call__(self, loss):
         if self.best_loss == None:
             self.best_loss = loss
-        elif self.best_loss - loss >= self.min_delta:
-            # improved enough
+        elif self.best_loss - loss >= self.min_delta: # improved enough
             self.best_loss = loss
             self.counter = 0
-        elif self.best_loss - loss < self.min_delta:
-            # did NOT improve enough :C
+        elif self.best_loss - loss < self.min_delta: # did NOT improve enough :C
             self.counter += 1
-            if self.counter >= self.patience:
-                # it's stopping time! :C
+            if self.counter >= self.patience: # it's stopping time! :C
                 # no need reset early_stop, because we only use it once
                 self.early_stop = True 
+
 class TaskDataset(torch.utils.data.TensorDataset):
     """ input: input data
         label: label
@@ -77,24 +92,25 @@ class TaskDataset(torch.utils.data.TensorDataset):
         query_input =   self.input[query_indices]
         query_label =   self.label[query_indices] 
         return support_input, support_label, query_input, query_label
+
 class SiameseDataset(torch.utils.data.TensorDataset):
     """ input: input data
         label: label
         indices: indices used e.g. training indices
         """
     def __init__(self, input, label, indices, device):
-        # X is already normalized
-        self.input = torch.from_numpy(input).to(device)
-        self.label = torch.from_numpy(label).to(device)
+        self.input = torch.Tensor(input).to(device)
+        self.label = torch.Tensor(label).to(device)
         self.access_indices = indices
         self.indices = range(len(self.access_indices))
     def __len__(self):
         return len(self.indices)
-    def __getitem__(self, index): # assume index lies within subset_X_IDs
+    def __getitem__(self, index): 
         index = self.access_indices[index]
         other_index = random.choice(self.access_indices)
         input_1 = self.input[index]
         input_2 = self.input[other_index]
         label_1 = self.label[index]
         label_2 = self.label[other_index]
-        return input_1, label_1, input_2, label_2
+        return input_1.float(), label_1.float(), input_2.float(), label_2.float()
+    
