@@ -74,3 +74,10 @@ following above example, this becomes:
 NOTE: this lets you catch up where you left off (when you first got stuck at the authentication error)
 
 reference: https://stackoverflow.com/questions/68193573/git-push-returns-missing-or-invalid-credentials-code-econnrefused-remote-r
+
+**pov: you want to turn notebook into pdf**
+
+You need the shorter kind of - (NOT the longer version –)
+>jupyter nbconvert FileName.ipynb --to pdf
+
+This code converts notebook file FileName.ipynb to format 'pdf.' The format could also be 'html,' 'notebook' (so another notebook, as seen in the tmux example above), depending on the avialability (whether this format is installed)

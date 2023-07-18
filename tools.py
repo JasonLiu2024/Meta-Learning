@@ -15,6 +15,8 @@ class SaveBestModel():
             self.save = True
         if self.save == True:
             torch.save(model.state_dict(), self.folder + f'CV={round}' + '.pth')
+    def reset(self):
+        self.current_best_loss = float('inf')
 
 class SaveBestCrossValidationModel():
     def __init__(self, folder_address, current_best_loss = float('inf')):
@@ -28,12 +30,14 @@ class SaveBestCrossValidationModel():
             # print(f"current loss {current_loss} < {self.current_best_loss}")
             self.current_best_loss = current_loss
             self.best_model_name = f'CV={round}' + '.pth'
+    def reset(self):
+        self.current_best_loss = float('inf')
 
 class Scheduler():
     def __init__(self, optimizer, patience, minimum_learning_rate, factor):
         # wait 'patience' number of epochs to change learning rate
         # learning rates' lower bound: 'minimum_learning_rate'
-        # update learning rate by 'factor'ArithmeticError
+        # update learning rate by 'factor'
         self.optimizer = optimizer
         self.patience = patience
         self.minimum_learning_rate = minimum_learning_rate
@@ -71,6 +75,9 @@ class PatienceEarlyStopping():
             if self.counter >= self.patience: # it's stopping time! :C
                 # no need reset early_stop, because we only use it once
                 self.early_stop = True 
+    def reset(self):
+        self.best_loss = float('inf')
+        self.early_stop = False
 
 class TaskDataset(torch.utils.data.TensorDataset):
     """ input: input data
@@ -114,3 +121,34 @@ class SiameseDataset(torch.utils.data.TensorDataset):
         label_2 = self.label[other_index]
         return input_1.float(), label_1.float(), input_2.float(), label_2.float()
     
+import matplotlib.pyplot as plt
+def plot_loss(train_loss, valid_loss):
+    """ 
+        plot TRAIN alongside VALID loss"""
+    plt.figure(figsize=(4.8, 4.8))
+    plt.xlabel("Epoch")
+    plt.ylabel("Loss")
+    plt.subplot()
+    plt.plot(train_loss)
+    plt.plot(valid_loss)
+    plt.legend(["train loss", "valid loss"], loc ="upper right")
+    plt.show()
+
+class DefaultDataset(torch.utils.data.TensorDataset):
+    """ input: input data
+        label: label
+        indices: indices used e.g. training indices
+        """
+    def __init__(self, input, label, indices, device):
+        self.input = torch.Tensor(input).to(device)
+        self.label = torch.Tensor(label).to(device)
+        self.access_indices = indices
+        self.indices = range(len(self.access_indices))
+    def __len__(self):
+        return len(self.indices)
+    def __getitem__(self, index): 
+        index = self.access_indices[index]
+        input = self.input[index]
+        label = self.label[index]
+        return input.float(), label.float()
+  
