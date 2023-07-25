@@ -123,7 +123,7 @@ class SiameseDataset(torch.utils.data.TensorDataset):
     
 import matplotlib.pyplot as plt
 def plot_loss(train_loss, valid_loss):
-    """ 
+    """ OUTDATED
         plot TRAIN alongside VALID loss"""
     plt.figure(figsize=(4.8, 4.8))
     plt.xlabel("Epoch")
@@ -133,6 +133,28 @@ def plot_loss(train_loss, valid_loss):
     plt.plot(valid_loss)
     plt.legend(["train loss", "valid loss"], loc ="upper right")
     plt.show()
+
+def plot_losses(train_loss, valid_loss, CV_round):
+        """UPDATED"""
+        f, ax = plt.subplots(figsize=(6, 4.5)) # NOT subplot()
+        train_loss_color = 'blue'
+        valid_loss_color = 'green'
+        plt.plot(train_loss, '-', color=train_loss_color)
+        plt.plot(valid_loss, '-', color=valid_loss_color)
+        FONT = {'fontname':'Ubuntu'}
+        ax.text(0.99, 0.90, 'Line = crestline',
+                verticalalignment='bottom', horizontalalignment='right',
+                transform=ax.transAxes,
+                color=train_loss_color, fontsize=16, **FONT)
+        ax.text(0.99, 0.80, 'Line = crestline',
+                verticalalignment='bottom', horizontalalignment='right',
+                transform=ax.transAxes,
+                color=valid_loss_color, fontsize=16, **FONT)
+        ax.text(0.01, 0.90, f'CV round: {CV_round}',
+                verticalalignment='bottom', horizontalalignment='left',
+                transform=ax.transAxes,
+                color='black', fontsize=16, **FONT)
+        plt.show()
 
 class DefaultDataset(torch.utils.data.TensorDataset):
     """ input: input data
