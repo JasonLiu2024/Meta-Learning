@@ -9,19 +9,24 @@
 *.txt
 *.html
 *.txt
-*.obj
+# data
 5.9.23
 5.16.23_Pressure
+5.16.23-ContinuousData
+# files
 *.doc
 *.docx
 *.pickle
 *.pth
 *.model
+# python
+__pycache__
+P.ipynb
+PP.ipynb
+# folders to ignore
 model_dnn
 model_siamese
 model_triplet
 experiments
 DNN_CV_template
-__pycache__
-P.ipynb
-PP.ipynb
+dated
