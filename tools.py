@@ -3,6 +3,11 @@ import data_accessor as acc
 import random
 import matplotlib.pyplot as plt
 
+"""Delete ths cell when done!"""
+# %load_ext autoreload
+# %autoreload complete
+
+"""save model WITHIN cross-validation round"""
 class SaveBestModel():
     def __init__(self, folder_address, current_best_loss = float('inf')):
         self.current_best_loss = current_best_loss
@@ -17,7 +22,9 @@ class SaveBestModel():
             torch.save(model.state_dict(), self.folder + f'CV={round}' + '.pth')
     def reset(self):
         self.current_best_loss = float('inf')
+        self.save = True
 
+"""save model ACROSS many cross-validation rounds"""
 class SaveBestCrossValidationModel():
     def __init__(self, folder_address, current_best_loss = float('inf')):
         self.current_best_loss = current_best_loss
@@ -33,6 +40,7 @@ class SaveBestCrossValidationModel():
     def reset(self):
         self.current_best_loss = float('inf')
 
+"""learning rate scheduler"""
 class Scheduler():
     def __init__(self, optimizer, patience, minimum_learning_rate, factor):
         # wait 'patience' number of epochs to change learning rate
@@ -55,6 +63,7 @@ class Scheduler():
     def __call__(self, validation_loss):
         self.scheduler.step(validation_loss)
 
+"""early stopping by patience"""
 class PatienceEarlyStopping():
     def __init__(self, patience, min_delta):
         """ if no improvement after 'patience' epochs, stop training
