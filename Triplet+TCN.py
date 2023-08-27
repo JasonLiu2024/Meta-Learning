@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 """Triplet network + Auxiliary network"""
-class TripletAuxNetwork(torch.nn.Module):
+class TripletAux_and_TCNNetwork(torch.nn.Module):
     """ Input: pos, neg, anchor, anchor_label
         Output: pos_prediction, neg_prediction"""
     def __init__(self, device, input_dimension, feature_dimension, output_dimension):
@@ -44,12 +44,12 @@ class TripletAuxNetwork(torch.nn.Module):
     
 import numpy as np
 from tools import SaveBestModel, PatienceEarlyStopping, Scheduler, plot_losses
-class TripletAuxManager:
-    """ DOES: train & evaluate a Triplet network
+class TripletAux_and_TCNManager:
+    """ DOES: train & evaluate a Triplet_and_TCN network
         """
     def __init__(self, epoch, cross_validation_round, setting, device):
         # self._network = SingleTaskNetwork(device, s['input dimension'], s['feature dimension'], s['output dimension'])
-        self._network = TripletAuxNetwork(device, setting['input dimension'], setting['feature dimension'], setting['output dimension'])
+        self._network = TripletAux_and_TCNNetwork(device, setting['input dimension'], setting['feature dimension'], setting['output dimension'])
 
         self._network.apply(self.initializer)
         self._learning_rate = setting['learning rate']
@@ -125,28 +125,3 @@ class TripletAuxManager:
         self._valid_loss = []
         # reset auxiliary network
         self._network.auxiliary_sequential.apply(self.initializer)
-
-import random
-class TripletDataset(torch.utils.data.TensorDataset):
-    """ input: input data
-        label: label
-        indices: indices used e.g. training indices
-        """
-    def __init__(self, input, label, indices, device):
-        self.input = torch.Tensor(input).to(device)
-        self.label = torch.Tensor(label).to(device)
-        self.access_indices = indices
-        self.indices = range(len(self.access_indices))
-    def __len__(self):
-        return len(self.indices)
-    def __getitem__(self, index): 
-        index = self.access_indices[index]
-        anchor_index = random.choice(self.access_indices)
-        neg_index = random.choice(self.access_indices)
-        pos = self.input[index]
-        pos_label = self.label[index]
-        anchor = self.input[anchor_index]
-        anchor_label = self.label[anchor_index]
-        neg = self.input[neg_index]
-        neg_label = self.label[neg_index]
-        return pos, pos_label, neg, neg_label, anchor, anchor_label
