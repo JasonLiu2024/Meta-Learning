@@ -53,12 +53,12 @@ class ResidualBlock(nn.Module):
         \n                    x, o, x, o, x
         \nThis is the Temporal Block in the original implementation
         """
-    def __init__(self, input_ct, output_ct, kernel_size, stride, dilation, padding, dropout=0.2):
+    def __init__(self, input_channels, output_channels, kernel_size, stride, dilation, padding, dropout=0.2):
         super().__init__()
         self.nonlinearity = nn.ReLU()
-        self.convolution_1 = weight_norm(nn.Conv1d(in_channels=input_ct, out_channels=output_ct, kernel_size=kernel_size,
+        self.convolution_1 = weight_norm(nn.Conv1d(in_channels=input_channels, out_channels=output_channels, kernel_size=kernel_size,
                 stride=stride, padding=padding, dilation=dilation))
-        self.convolution_2 = weight_norm(nn.Conv1d(in_channels=input_ct, out_channels=output_ct, kernel_size=kernel_size,
+        self.convolution_2 = weight_norm(nn.Conv1d(in_channels=input_channels, out_channels=output_channels, kernel_size=kernel_size,
                 stride=stride, padding=padding, dilation=dilation))
         self.network = nn.Sequential(
             self.convolution_1,
@@ -71,7 +71,7 @@ class ResidualBlock(nn.Module):
             nn.Dropout(dropout))
         # makes sure input and output have same number of 
         #    "a 1x1 convolution is added when residual input and output have different dimensions"
-        self.downsample = nn.Conv1d(in_channels=input_ct, out_channels=output_ct, kernel_size=1) if input_ct != output_ct else None
+        self.downsample = nn.Conv1d(in_channels=input_channels, out_channels=output_channels, kernel_size=1) if input_channels != output_channels else None
         self.init_weights()
 
     def init_weights(self):
@@ -94,16 +94,18 @@ class ResidualBlock(nn.Module):
 
 class TemporalConvNet(nn.Module):
     """channel_ct_list: number of channels for each LEVEL of the network"""
-    def __init__(self, input_ct, channel_ct_list, kernel_size=2, dropout=0.2):
+    def __init__(self, input_channels, output_channels_list, kernel_size=2, dropout=0.2):
         super().__init__()
         layers = []
-        num_levels = len(channel_ct_list)
+        num_levels = len(output_channels_list)
+        # print(f"TemporalConvNet::ResidualBlocks")
         for i in range(num_levels):
             dilation_size = 2 ** i
-            in_channels = input_ct if i == 0 else channel_ct_list[i-1]
-            out_channels = channel_ct_list[i]
+            in_channels = input_channels if i == 0 else output_channels_list[i-1]
+            out_channels = output_channels_list[i]
             layers += [ResidualBlock(in_channels, out_channels, kernel_size, stride=1, dilation=dilation_size,
                 padding=(kernel_size-1) * dilation_size, dropout=dropout)]
+            # print(f"in: {in_channels}, out: {out_channels}, kernel: {kernel_size}")
         self.network = nn.Sequential(*layers)
     def forward(self, x):
         return self.network(x)

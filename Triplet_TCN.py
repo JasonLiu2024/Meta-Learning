@@ -1,15 +1,25 @@
 import torch
 import torch.nn as nn
+from TCN import *
 """Triplet network + Auxiliary network"""
 class TripletAux_and_TCNNetwork(torch.nn.Module):
     """ Input: pos, neg, anchor, anchor_label
         Output: pos_prediction, neg_prediction"""
-    def __init__(self, device, input_dimension, feature_dimension, output_dimension):
+    def __init__(self, device, input_dimension, input_channels, feature_dimension, output_dimension,
+                 convolution_levels_ct=3):
         super().__init__()
         self.input_dimension = input_dimension
         self.feature_dimension = feature_dimension
         self.output_dimension = output_dimension
+        self.input_channels = input_channels
+        self.convolution_levels_ct = convolution_levels_ct
         self.device = device
+        # conv1d from TemporalConvNet expects input shape=(batch size, channel ct, length of signal)
+        # here, (channel ct, length of signal) is the shape of our input
+        # print(f"[ct for ct in range(self.convolution_levels_ct)]: {type([self.input_channels for ct in range(self.convolution_levels_ct)])}")
+        self.tcn = TemporalConvNet(input_channels=self.input_channels, 
+                                   output_channels_list=[self.input_channels for ct in range(self.convolution_levels_ct)], 
+                                   kernel_size=3, dropout=0.1)
         self.feature_sequential = torch.nn.Sequential(
             torch.nn.Linear(self.input_dimension, 3000),
             nn.ReLU(),
@@ -31,9 +41,12 @@ class TripletAux_and_TCNNetwork(torch.nn.Module):
         self.to(device)
         self.float()
     def forward(self, pos, neg, anchor, anchor_label):
-        feature_pos = self.feature_sequential(pos)
-        feature_neg = self.feature_sequential(neg)
-        feature_anchor = self.feature_sequential(anchor)
+        convolved_pos = self.tcn(pos)
+        convolved_neg = self.tcn(neg)
+        convolved_anchor = self.tcn(anchor)
+        feature_pos = self.feature_sequential(convolved_pos)
+        feature_neg = self.feature_sequential(convolved_neg)
+        feature_anchor = self.feature_sequential(convolved_anchor)
         feature_space_difference_pos_anchor = feature_pos - feature_anchor
         feature_space_difference_neg_anchor = feature_neg - feature_anchor
         label_space_difference_pos_anchor = self.auxiliary_sequential(feature_space_difference_pos_anchor)
@@ -49,8 +62,8 @@ class TripletAux_and_TCNManager:
         """
     def __init__(self, epoch, cross_validation_round, setting, device):
         # self._network = SingleTaskNetwork(device, s['input dimension'], s['feature dimension'], s['output dimension'])
-        self._network = TripletAux_and_TCNNetwork(device, setting['input dimension'], setting['feature dimension'], setting['output dimension'])
-
+        self._network = TripletAux_and_TCNNetwork(device, setting['input dimension'], setting['input channels'], 
+            setting['feature dimension'], setting['output dimension'], setting['number of convolution levels'])
         self._network.apply(self.initializer)
         self._learning_rate = setting['learning rate']
         self._optimizer = torch.optim.Adam(
@@ -125,3 +138,29 @@ class TripletAux_and_TCNManager:
         self._valid_loss = []
         # reset auxiliary network
         self._network.auxiliary_sequential.apply(self.initializer)
+
+import random
+class TripletAux_and_TCNDataset(torch.utils.data.TensorDataset):
+    """ input: input data
+        label: label
+        indices: indices used e.g. training indices
+        """
+    def __init__(self, input, label, indices, device):
+        self.input = torch.Tensor(input).to(device)
+        self.label = torch.Tensor(label).to(device)
+        self.access_indices = indices
+        self.indices = range(len(self.access_indices))
+    def __len__(self):
+        return len(self.indices)
+    def __getitem__(self, index): 
+        index = self.access_indices[index]
+        anchor_index = random.choice(self.access_indices)
+        neg_index = random.choice(self.access_indices)
+        pos = self.input[index]
+        pos_label = self.label[index]
+        anchor = self.input[anchor_index]
+        anchor_label = self.label[anchor_index]
+        neg = self.input[neg_index]
+        neg_label = self.label[neg_index]
+        # adding dummy dimension for 'channel'
+        return pos[None, :], pos_label[None, :], neg[None, :], neg_label[None, :], anchor[None, :], anchor_label[None, :]
