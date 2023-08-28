@@ -69,7 +69,7 @@ class ResidualBlock(nn.Module):
             ChopLastDimension(padding),
             self.nonlinearity,
             nn.Dropout(dropout))
-        # makes sure input and output have same number of 
+        # makes sure input and output have same number of channels
         #    "a 1x1 convolution is added when residual input and output have different dimensions"
         self.downsample = nn.Conv1d(in_channels=input_channels, out_channels=output_channels, kernel_size=1) if input_channels != output_channels else None
         self.init_weights()
