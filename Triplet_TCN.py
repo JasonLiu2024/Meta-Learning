@@ -19,17 +19,27 @@ class TripletAux_and_TCNNetwork(torch.nn.Module):
         # print(f"[ct for ct in range(self.convolution_levels_ct)]: {type([self.input_channels for ct in range(self.convolution_levels_ct)])}")
         self.tcn = TemporalConvNet(input_channels=self.input_channels, 
                                    output_channels_list=[self.input_channels for ct in range(self.convolution_levels_ct)], 
-                                   kernel_size=3, dropout=0.1)
+                                   kernel_size=3, dropout=0)
+        # self.feature_sequential = torch.nn.Sequential(
+        #     torch.nn.Linear(self.input_dimension, 3000),
+        #     nn.ReLU(),
+        #     torch.nn.Linear(3000, 600),
+        #     nn.ReLU(),
+        #     torch.nn.Linear(600, 600),
+        #     nn.ReLU(),
+        #     torch.nn.Linear(600, 300),
+        #     nn.ReLU(),
+        #     torch.nn.Linear(300, self.feature_dimension)
+        # )
         self.feature_sequential = torch.nn.Sequential(
             torch.nn.Linear(self.input_dimension, 3000),
             nn.ReLU(),
-            torch.nn.Linear(3000, 600),
+            torch.nn.Linear(3000, 900),
             nn.ReLU(),
-            torch.nn.Linear(600, 600),
+            torch.nn.Linear(900, 300),
             nn.ReLU(),
-            torch.nn.Linear(600, 300),
-            nn.ReLU(),
-            torch.nn.Linear(300, self.feature_dimension)
+            torch.nn.Linear(300, self.feature_dimension),
+            # nn.ReLU(),
         )
         self.auxiliary_sequential = torch.nn.Sequential(
             torch.nn.Linear(self.feature_dimension, 100),

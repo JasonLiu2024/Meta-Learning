@@ -5,24 +5,31 @@ from Style import TextColor
 import numpy as np
 """does cross-validation"""
 class CrossValidator:
-    """ number_of_cross_validation_rounds
-        \nnumber_of_epochs
-        \nsaver (actual object)
-        \ndataset (the function of the object)
-        \ndatas: (list of text) data names
-        \ndata_dictionary  
+    """settings: dictionary of settings
+        \nsaver: (literally initializing the saver object)
+        \ndataset: dataset class object
+        \ndata_dictionary: dictionary object for data
+        \ndatas: list of data names (all keys of data_dictionary) 
+            manipulates order of using the data in the dictionary
+        \nmanager: trainer object
+        \ndevice: device on which model runs
+        \ndev: is development (to control if model uses DEV settings); default false
         """
-    def __init__(self, number_of_cross_validation_rounds, number_of_epochs, 
-                 saver, dataset, datas, data_dictionary, manager, settings,
-                 device):
-        self.number_of_cross_validation_rounds = number_of_cross_validation_rounds
-        self.number_of_epochs = number_of_epochs
+    def __init__(self, settings, saver, dataset, datas, data_dictionary, manager, 
+                 device, dev=False):
         self.saver = saver
         self.cross_validation_loss = []
         self.dataset = dataset
         self.datas = datas
         self.data_dictionary = data_dictionary
         self.settings = settings
+        self.dev = dev
+        if dev == True:
+            self.number_of_cross_validation_rounds = self.settings['cross validation round-development']
+            self.number_of_epochs = self.settings['epoch-development']
+        else:
+            self.number_of_cross_validation_rounds = self.settings['cross validation round']
+            self.number_of_epochs = self.settings['epoch']
         self.manager = manager
         self.device = device
         print(f"{TextColor.Bold}{TextColor.BrightGreen_text}__________CROSS VALIDATION__________{TextColor.End}")
@@ -56,6 +63,7 @@ class CrossValidator:
             self.cross_validation_loss.append(valid_loss)
         print(f"{TextColor.Bold}{TextColor.BrightGreen_text}BEST{TextColor.End} model: {self.saver.best_model_name} with {self.saver.current_best_loss}")
         print(f"trained on {self.datas[data_index]}")
+        # print(f"losses: {self.cross_validation_loss}")
         print(f"Aggregate performance: Valid loss mean {np.mean(self.cross_validation_loss)}, std {np.std(self.cross_validation_loss)}")
     def multi_task_train_sequential(self): # blue
         """ learn ONE data at a time, need to reset model in between"""
@@ -84,7 +92,7 @@ class CrossValidator:
             self.saver(current_loss=valid_loss, round=cross_validation_round)
         print(f"{TextColor.Bold}{TextColor.BrightGreen_text}BEST{TextColor.End} model: {self.saver.best_model_name} with {self.saver.current_best_loss}")
         print(f"trained datas sequentially")
-        print(f"Aggregate performance: yo")
+        print(f"Aggregate performance:")
         for index, cv_loss in enumerate(self.cross_validation_loss):
             print(f"{self.datas[index]}: Valid loss mean {np.mean(cv_loss)}, std {np.std(cv_loss)}")  
         
