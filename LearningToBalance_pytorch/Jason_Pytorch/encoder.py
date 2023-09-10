@@ -99,16 +99,25 @@ class InferenceNetwork(torch.nn.Module):
         )
     def get_MeanVarianceCardinality(self, x : torch.Tensor, cardinality) -> torch.Tensor:
         """get element-wise sample mean, variance, cardinality"""
+        # print(f"get_MeanVarianceCardinality::input shape {x.size()}")
         variance, mean = torch.var_mean(input=x, dim=0)
+        # print(f"get_MeanVarianceCardinality::mean shape {mean.size()}")
         cardinality = torch.tile(input=torch.reshape(input=cardinality, shape=[-1]), dims=list(mean.size()))
-        return torch.stack(tensors=[mean, variance, cardinality], dim=1)
+        # print(f"get_MeanVarianceCardinality::cardinality {cardinality.size()}")
+        class_summary = torch.stack(tensors=[mean, variance, cardinality], dim=1)
+        # print(f"get_MeanVarianceCardinality::output shape: {class_summary.size()}")
+        return class_summary
     def statistics_pooling_1(self, x : torch.Tensor, y : torch.Tensor) -> tuple[torch.Tensor, list[torch.Tensor]]:
         """get: class summary vector class_summary (s in paper)–for EACH class, compiled altogether
         \nalso returns list of cardinality"""
         # encode entire class
-        x = self.network_class_encoder_1(x.reshape([-1, self.xdim, self.xdim, self.input_channel]))
+        x = x.reshape([-1, self.input_channel, self.xdim, self.xdim,])
+        # print(f"statistics_pooling_1::x reshaped: {x.shape}")
+        x = self.network_class_encoder_1(x)
+        # print(f"statistics_pooling_1::x shape after encode: {x.shape}")
         # statistics pooling 1
         y_sum = torch.sum(y, 1)
+        # print(f"statistics_pooling_1::y_sum shape {y_sum.size()}")
         y_largest_index = torch.argmax(y, 1)
         MeanVarianceCardinality_list = []
         Cardinality_list : list[torch.Tensor] = []
@@ -117,20 +126,27 @@ class InferenceNetwork(torch.nn.Module):
             cls_mask = cls_mask.int().float()
             # use cls_index as boolean mask
             x_cls = x * cls_mask
+            # print(f"x_cls shape: {x_cls.size()}")
             y_cls = y * cls_mask
             # normalize the size of the set
             Cardinality_cls = (torch.sum(y_cls) - 1.) / (self.number_of_shots - 1.)
+            # print(f"Cardinality_cls: {Cardinality_cls}")
+            # print(f"Cardinality_cls shape: {Cardinality_cls.size()}")
             Cardinality_list.append(Cardinality_cls)
             MeanVarianceCardinality = self.get_MeanVarianceCardinality(x_cls, Cardinality_cls)
             MeanVarianceCardinality_list.append(MeanVarianceCardinality)
+        # print(f"statistics_pooling_1()::MeanVarianceCardinality_list {MeanVarianceCardinality_list[0].size()}")
         class_summary : torch.Tensor = torch.stack(MeanVarianceCardinality_list, 0)
+        # print(f"statistics_pooling_1()::class_summary first shape: {class_summary.size()}")
         class_summary = self.network_transition_1(class_summary)
         class_summary = class_summary.reshape([self.number_of_classes, -1])
+        # print(f"statistics_pooling_1()::class_summary shape: {class_summary.size()}")
         return class_summary, Cardinality_list
     def statistics_pooling_2(self, class_summary : torch.Tensor, Cardinality_list) -> torch.Tensor:
         """get: summary of entire task aka all classes from statistics_pooling_1()"""
         # encode entire task
-        task_summary : torch.Tensor = self.network_transition_2(class_summary)
+        # print(f"statistics_pooling_2()::task_summary shape: {class_summary.size()}")
+        task_summary : torch.Tensor = self.network_task_encoder_2(class_summary)
         # statistics pooling 2
         task_summary = self.get_MeanVarianceCardinality(task_summary, torch.sum(torch.Tensor(Cardinality_list)))
         task_summary = torch.unsqueeze(task_summary, 0)
@@ -170,7 +186,9 @@ class InferenceNetwork(torch.nn.Module):
         sigma = torch.squeeze(self.network_zeta_std(task_summary_embedding))
         q = torch.distributions.Normal(mu, torch.nn.functional.softplus(sigma))
         return q
-    def get_posterior_distribution(self, x : torch.Tensor, y : torch.Tensor):
+    def get_posterior_distribution(self, x : torch.Tensor, y : torch.Tensor) -> tuple[
+        torch.distributions.Normal, torch.distributions.Normal, torch.distributions.Normal
+    ]:
         """get approximation of posterior distribution, parametrized by ψ Psi
         \nmeta-learning goal: maximize conditional log likelihood, given by
         \nlog(p(train label, test label | train input, test input; theta θ))
@@ -184,7 +202,8 @@ class InferenceNetwork(torch.nn.Module):
         gamma_distribution = self.get_gamma(task_summary)
         zeta_distribution = self.get_zeta(task_summary)
         return omega_distribution, gamma_distribution, zeta_distribution
-    def forward(self, x : torch.Tensor, y : torch.Tensor, do_sample : bool) -> tuple[torch.Tensor | None, dict | None, dict | None, torch.Tensor | int]:
+    def forward(self, x : torch.Tensor, y : torch.Tensor, do_sample : bool) -> tuple[
+        torch.Tensor | None, dict | None, dict | None, torch.Tensor | int]:
         omega_distribution, gamma_distribution, zeta_distribution = self.get_posterior_distribution(x, y)
         # get kl divergence
         omega_KL = torch.sum(KL_Diagonal_StandardNormal(omega_distribution))

@@ -17,6 +17,8 @@ def KL_Diagonal_StandardNormal(q : torch.distributions.Normal) -> torch.Tensor:
     q_shape : torch.Size = q.mean.size()
     p = torch.distributions.Normal(loc=torch.zeros(size=q_shape), 
                                    scale=torch.ones(size=q_shape))
+    """we're looking for KL[q(φ |train data; ψ) || φ]
+    where q(φ |train data; ψ) is our approximate posterior"""
     return torch.distributions.kl_divergence(q, p)
 
 # NOT used, only for reference
