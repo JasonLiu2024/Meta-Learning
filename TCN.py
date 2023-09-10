@@ -10,7 +10,8 @@
     paper: https://arxiv.org/pdf/1803.01271.pdf"""
 import torch
 import torch.nn as nn
-from torch.nn.utils import weight_norm
+# weight_norm is a function INSIDE weight_norm!
+from torch.nn.utils.weight_norm import weight_norm
 
 class ChopLastDimension(nn.Module):
     """inherits from nn.Module

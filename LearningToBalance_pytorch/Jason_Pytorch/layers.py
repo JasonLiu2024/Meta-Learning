@@ -1,7 +1,7 @@
 import numpy as np
 import torch
 
-"""functions"""
+"""functions (NOT used)"""
 log = lambda x : torch.log(x + 1e-20)
 softmax = torch.nn.Softmax()
 relu = torch.nn.ReLU()
@@ -9,55 +9,91 @@ relu = torch.nn.ReLU()
 # output always positive
 softplus = torch.nn.Softplus() 
 sigmoid = torch.nn.Sigmoid()
-exp = torch.exp()
+exp = torch.exp
 
-def KL_Diagonal_StandardNormal(q):
+def KL_Diagonal_StandardNormal(q : torch.distributions.Normal) -> torch.Tensor:
     """Kullback-Leibler divergence KL(p || q) 
     original name: kl_diagnormal_stdnormal()"""
-    q_shape = q.mean().shape
+    q_shape : torch.Size = q.mean.size()
     p = torch.distributions.Normal(loc=torch.zeros(size=q_shape), 
                                    scale=torch.ones(size=q_shape))
     return torch.distributions.kl_divergence(q, p)
 
-def dense(x : torch.Tensor, dim):
+# NOT used, only for reference
+def DENSE(x : torch.Tensor, dim : int) -> torch.nn.Module:
+    """Linear layer"""
     return torch.nn.Linear(x.size(dim=1), dim)
     # kernel_initializer: tf.random_normal_initializer(stddev=0.02),
     # bias_initializer=tf.zeros_initializer(), **kwargs)
+# NOT used, only for reference
+def CONV(filters, kernel_size=3, strides=1) -> torch.nn.Module:
+  """Convolution 2D"""
+  # in tf.layers.conv2d, filters is output channels
+  return torch.nn.Conv2d(in_channels=3, out_channels=filters, kernel_size=3, stride=3) 
+      # kernel_initializer=tf.truncated_normal_initializer(stddev=0.02),
+      # bias_initializer=tf.zeros_initializer(), **kwargs)
+# NOT used, only for reference
+def POOL(x) -> torch.nn.Module:
+  return torch.nn.MaxPool2d(kernel_size=2, stride=2)
+  # tf.layers.max_pooling2d(x, 2, 2, padding='valid', **kwargs)
+# NOT used, only for reference
+def Same_Padding(img_size, kernel_size, stride=1) -> int:
+  """find padding size to make output size equal to input size, for conv2d
+  \nassume SQUARE img"""
+  return ((stride - 1) * img_size - stride + kernel_size)//2
+  # formula: ((s - 1) * i - s + f) / 2, s=stride, i=img_size, f=kernel_size
+  # source: https://saturncloud.io/blog/is-there-really-no-paddingsame-option-for-pytorchs-conv2d/#:~:text=Many%20data%20scientists%20who%20are,to%20achieve%20the%20same%20functionality.
 
-def conv(x, filters, kernel_size=3, strides=1, **kwargs):
-  return torch.nn.Conv2d(in_channels)
-    tf.layers.conv2d(x, filters, kernel_size, strides, padding='same',
-      kernel_initializer=tf.truncated_normal_initializer(stddev=0.02),
-      bias_initializer=tf.zeros_initializer(), **kwargs)
+class ConvolutionBlock(torch.nn.Module):
+  def __init__(self, in_channel, out_channel, bias : torch.Tensor):
+    super().__init__()
+    self.in_channel = in_channel
+    self.out_channel = out_channel
+    # padding='same' pads the input so the output has the shape as the input. However, this mode doesn’t support any stride values other than 1.
+    # source: https://pytorch.org/docs/stable/generated/torch.nn.Conv2d.html
+    self.network = torch.nn.Sequential(
+      torch.nn.Conv2d(self.in_channel, self.out_channel, kernel_size=1, padding='same'),
+      torch.nn.BatchNorm2d(self.out_channel),
+      torch.nn.MaxPool2d(kernel_size=(1,2,2,1), stride=(1,2,2,1))
+    )
+  def forward(self, x : torch.Tensor):
+    return self.network(x)
 
-def pool(x, **kwargs):
-  return tf.layers.max_pooling2d(x, 2, 2, padding='valid', **kwargs)
+class DenseBlock(torch.nn.Module):
+  def __init__(self, weights : torch.Tensor, bias : torch.Tensor):
+    super().__init__()
+    self.weights = weights
+    self.bias = bias
+    self.network = torch.nn.Flatten()
+  def forward(self, x : torch.Tensor):
+    return torch.matmul(input=self.network(x), other=self.weights) + self.bias
 
-# blocks
-def conv_block(x, w, b, bn_scope='conv_bn'):
-  x = tf.nn.conv2d(x, w, [1,1,1,1], 'SAME') + b # NHWC
-  x = batch_norm(x, activation_fn=relu, scope=bn_scope, reuse=tf.AUTO_REUSE)
-  x = tf.nn.max_pool(x, [1,2,2,1], [1,2,2,1], 'VALID')
-  return x
+def CrossEntropy(logits : torch.Tensor, labels : torch.Tensor):
+  """cross entropy loss for logits, 
+  \nsoftmax is part of cross_entropy()"""
+  # source: https://stackoverflow.com/questions/49377483/about-tf-nn-softmax-cross-entropy-with-logits-v2
+  loss = torch.nn.functional.cross_entropy(input=logits, target=labels)
+  return torch.mean(loss)
 
-def dense_block(x, w, b):
-  x = tf.matmul(flatten(x), w) + b
-  return x
+def CrossEntropy_Class(logits : torch.Tensor, labels : torch.Tensor):
+  loss = torch.nn.functional.cross_entropy(logits, labels)
+  # tf.expand_dims() == torch.unsqueeze()
+  # source: https://discuss.pytorch.org/t/equivalent-to-torch-unsqueeze-in-tensorflow/26379
+  perclass = torch.matmul(torch.transpose(labels, 0, 1), torch.unsqueeze(loss, 1))
+  # source: https://stackoverflow.com/questions/65092587/tensorflow-to-pytorch
+  # source: https://stackoverflow.com/questions/59132647/tf-cast-equivalent-in-pytorch
+  N = float(labels.shape[0])
+  way = float(labels.shape[1])
+  # squeeze removes a dimension if it's size is 1
+  # source: https://pytorch.org/docs/stable/generated/torch.squeeze.html
+  return torch.squeeze(perclass) * way / N
 
-# training modules
-def cross_entropy(logits, labels):
-  losses = tf.nn.softmax_cross_entropy_with_logits_v2(
-      logits=logits, labels=labels)
-  return tf.reduce_mean(losses)
-
-def cross_entropy_perclass(logits, labels):
-  losses = tf.nn.softmax_cross_entropy_with_logits_v2(
-      logits=logits, labels=labels)
-  perclass = tf.matmul(tf.transpose(labels), tf.expand_dims(losses,1))
-  N_t = tf.cast(tf.shape(labels)[0], dtype=tf.float32)
-  way = tf.cast(tf.shape(labels)[1], dtype=tf.float32)
-  return tf.squeeze(perclass) * way / N_t
-
-def accuracy(logits, labels, axis=-1):
-  correct = tf.equal(tf.argmax(logits, -1), tf.argmax(labels, -1))
-  return tf.reduce_mean(tf.cast(correct, tf.float32), axis)
+def Accuracy(logits, labels, axis=-1):
+  # use .eq(), NOT .equal() need array, not single value
+  # source: https://pytorch.org/docs/stable/generated/torch.eq.html
+  correct = torch.eq(torch.argmax(logits, -1), torch.argmax(labels, -1))
+  # 'correct' is boolean tensor, need .float() to turn it into number!
+  # source: https://stackoverflow.com/questions/62150659/how-to-convert-a-tensor-of-booleans-to-ints-in-pytorch
+  # equivalent to: self.to(torch.float32)
+  # source: https://pytorch.org/docs/stable/generated/torch.Tensor.float.html
+  return torch.mean(correct.float(), axis)

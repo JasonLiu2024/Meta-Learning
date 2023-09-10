@@ -1,5 +1,5 @@
 import tensorflow as tf
-from layers import *
+from layers_tf import *
 
 # inference network for generating the three balancing variables
 class InferenceNetwork:

@@ -1,5 +1,5 @@
-from layers import *
-from encoder import InferenceNetwork
+from layers_tf import *
+from encoder_tf import InferenceNetwork
 
 class LearningToBalance:
   def __init__(self, args):
