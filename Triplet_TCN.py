@@ -150,6 +150,7 @@ class TripletAux_and_TCNManager:
         self._network.auxiliary_sequential.apply(self.initializer)
 
 import random
+# 'utils' having red wavy line in 'torch.utils.data.TensorDataset' is BUG
 class TripletAux_and_TCNDataset(torch.utils.data.TensorDataset):
     """ input: input data
         label: label

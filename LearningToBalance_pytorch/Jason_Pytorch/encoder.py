@@ -203,14 +203,14 @@ class InferenceNetwork(torch.nn.Module):
         zeta_distribution = self.get_zeta(task_summary)
         return omega_distribution, gamma_distribution, zeta_distribution
     def forward(self, x : torch.Tensor, y : torch.Tensor, do_sample : bool) -> tuple[
-        torch.Tensor | None, dict | None, dict | None, torch.Tensor | int]:
+        torch.Tensor, dict[str, torch.Tensor], dict[str, torch.Tensor], torch.Tensor | int]:
         omega_distribution, gamma_distribution, zeta_distribution = self.get_posterior_distribution(x, y)
         # get kl divergence
         omega_KL = torch.sum(KL_Diagonal_StandardNormal(omega_distribution))
         gamma_KL = torch.sum(KL_Diagonal_StandardNormal(gamma_distribution))
         zeta_KL = torch.sum(KL_Diagonal_StandardNormal(zeta_distribution))
         # sample variable from posterior
-        omega, gamma, zeta = None, None, None
+        omega = torch.empty() # only for type-hinting
         KL = 0
         if self.use_o == True:
             KL += omega_KL
@@ -218,27 +218,27 @@ class InferenceNetwork(torch.nn.Module):
             # DON'T do .mean() <- get 'Tensor not callable'
             # source: https://pytorch.org/docs/stable/distributions.html#torch.distributions.distribution.Distribution.mean
             omega = omega_distribution.sample() if do_sample else omega_distribution.mean
+        gamma = {}
         if self.use_g == True:
             KL += gamma_KL
             g = gamma_distribution.sample() if do_sample else gamma_distribution.mean
             # five 1's because gamma dimension is 5! see __init__()
             g = torch.split(g, [1, 1, 1, 1, 1])
-            gamma = {}
             for l in [1, 2, 3, 4]:
-                gamma[f'convolution{l}_weight'] = g[l - 1]
-                gamma[f'convolution{l}_bias'] = g[l - 1]
+                gamma[f'convolution_{l}_weight'] = g[l - 1]
+                gamma[f'convolution_{l}_bias'] = g[l - 1]
             gamma[f'dense_weight'] = g[4]
             gamma[f'dense_bias'] = g[4]
+        zeta = {}
         if self.use_z == True:
             KL += zeta_KL
             z = zeta_distribution.sample() if do_sample else zeta_distribution.mean
             # five 1's because gamma dimension is 5! see __init__()
             z_weight = torch.split(z[:self.number_of_channels * 4], [self.number_of_channels] * 4)
             z_bias = torch.split(z[self.number_of_channels * 4:], [self.number_of_channels] * 4)
-            zeta = {}
             for l in [1, 2, 3, 4]:
-                zeta[f'convolution{l}_weight'] = z_weight[l - 1]
-                zeta[f'convolution{l}_bias'] = z_bias[l - 1]
+                zeta[f'convolution_{l}_weight'] = z_weight[l - 1]
+                zeta[f'convolution_{l}_bias'] = z_bias[l - 1]
         return omega, gamma, zeta, KL
         
     

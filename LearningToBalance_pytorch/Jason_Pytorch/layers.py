@@ -1,5 +1,6 @@
 import numpy as np
 import torch
+import torch.nn.functional as F
 
 """functions (NOT used)"""
 log = lambda x : torch.log(x + 1e-20)
@@ -21,22 +22,33 @@ def KL_Diagonal_StandardNormal(q : torch.distributions.Normal) -> torch.Tensor:
     where q(φ |train data; ψ) is our approximate posterior"""
     return torch.distributions.kl_divergence(q, p)
 
-# NOT used, only for reference
-def DENSE(x : torch.Tensor, dim : int) -> torch.nn.Module:
+def DENSE(x : torch.Tensor, output_dimension : int,) -> torch.nn.Module:
     """Linear layer"""
-    return torch.nn.Linear(x.size(dim=1), dim)
-    # kernel_initializer: tf.random_normal_initializer(stddev=0.02),
-    # bias_initializer=tf.zeros_initializer(), **kwargs)
+    layer = torch.nn.Linear(x.size(dim=1), output_dimension)
+    torch.nn.init.normal_(layer.weight)
+    torch.nn.init.zeros_(layer.bias)
+    return layer
+def CONV(x : torch.Tensor, out_channels : int, 
+         weight : torch.Tensor, bias : torch.Tensor, 
+         kernel_size=3, strides=1, groups=1) -> torch.nn.Module:
+  """Convolution 2D, 
+  \nweight shape: (out_channel, in_channel/groups, kernel_size[0], kernel_size[1])
+  \nbias shape: out_channel"""
+  # weight/filter is matrix used to do convolution
+  # shape: (out_channel, in_channel/groups, kernel_size[0], kernel_size[1])
+  # where groups = number of groups to split input channels into
+  # (default convolution applies filter to all input channels)
+  # source: https://pytorch.org/docs/stable/generated/torch.nn.Conv2d.html
+  layer = torch.nn.Conv2d(in_channels=x.size()[1], out_channels=out_channels, kernel_size=3, stride=3)
+  layer.weight = torch.nn.Parameter(weight)
+  layer.bias = torch.nn.Parameter(bias)
+  torch.nn.init.trunc_normal_(layer.weight, std=0.02)
+  torch.nn.init.zeros_(layer.bias) 
+  return layer
 # NOT used, only for reference
-def CONV(filters, kernel_size=3, strides=1) -> torch.nn.Module:
-  """Convolution 2D"""
-  # in tf.layers.conv2d, filters is output channels
-  return torch.nn.Conv2d(in_channels=3, out_channels=filters, kernel_size=3, stride=3) 
-      # kernel_initializer=tf.truncated_normal_initializer(stddev=0.02),
-      # bias_initializer=tf.zeros_initializer(), **kwargs)
-# NOT used, only for reference
-def POOL(x) -> torch.nn.Module:
-  return torch.nn.MaxPool2d(kernel_size=2, stride=2)
+def POOL() -> torch.nn.Module:
+  layer = torch.nn.MaxPool2d(kernel_size=2, stride=2)
+  return layer
   # tf.layers.max_pooling2d(x, 2, 2, padding='valid', **kwargs)
 # NOT used, only for reference
 def Same_Padding(img_size, kernel_size, stride=1) -> int:
@@ -46,29 +58,43 @@ def Same_Padding(img_size, kernel_size, stride=1) -> int:
   # formula: ((s - 1) * i - s + f) / 2, s=stride, i=img_size, f=kernel_size
   # source: https://saturncloud.io/blog/is-there-really-no-paddingsame-option-for-pytorchs-conv2d/#:~:text=Many%20data%20scientists%20who%20are,to%20achieve%20the%20same%20functionality.
 
-class ConvolutionBlock(torch.nn.Module):
-  def __init__(self, in_channel, out_channel, bias : torch.Tensor):
-    super().__init__()
-    self.in_channel = in_channel
-    self.out_channel = out_channel
-    # padding='same' pads the input so the output has the shape as the input. However, this mode doesn’t support any stride values other than 1.
-    # source: https://pytorch.org/docs/stable/generated/torch.nn.Conv2d.html
-    self.network = torch.nn.Sequential(
-      torch.nn.Conv2d(self.in_channel, self.out_channel, kernel_size=1, padding='same'),
-      torch.nn.BatchNorm2d(self.out_channel),
-      torch.nn.MaxPool2d(kernel_size=(1,2,2,1), stride=(1,2,2,1))
-    )
-  def forward(self, x : torch.Tensor):
-    return self.network(x)
+def ConvolutionBlock_F(x : torch.Tensor, 
+  weight : torch.Tensor, bias : torch.Tensor) -> torch.Tensor:
+  x = F.conv2d(x, weight, bias, stride=[1, 1, 1, 1]) + bias
+  x = F.relu(x)
+  x = F.batch_norm(x, running_mean=None, running_var=None)
+  x = torch.nn.MaxPool2d(kernel_size=(1,2,2,1), stride=(1,2,2,1))(x)
+  return x
 
-class DenseBlock(torch.nn.Module):
-  def __init__(self, weights : torch.Tensor, bias : torch.Tensor):
-    super().__init__()
-    self.weights = weights
-    self.bias = bias
-    self.network = torch.nn.Flatten()
-  def forward(self, x : torch.Tensor):
-    return torch.matmul(input=self.network(x), other=self.weights) + self.bias
+# class ConvolutionBlock(torch.nn.Module):
+#   def __init__(self, in_channel : int, out_channel : int, weight : torch.Tensor, bias : torch.Tensor):
+#     super().__init__()
+#     self.in_channel = in_channel
+#     self.out_channel = out_channel
+#     # padding='same' pads the input so the output has the shape as the input. However, this mode doesn’t support any stride values other than 1.
+#     # source: https://pytorch.org/docs/stable/generated/torch.nn.Conv2d.html
+#     self.network = torch.nn.Sequential(
+#       torch.nn.Conv2d(self.in_channel, self.out_channel, kernel_size=1, padding='same'),
+#       torch.nn.ReLU(), # in tensorflow, activation function is part of batch normalization
+#       torch.nn.BatchNorm2d(self.out_channel),
+#       torch.nn.MaxPool2d(kernel_size=(1,2,2,1), stride=(1,2,2,1))
+#     )
+#   def forward(self, x : torch.Tensor):
+#     return self.network(x)
+
+def DenseBlock_F(x : torch.Tensor,
+  weight : torch.Tensor, bias : torch.Tensor) -> torch.Tensor:
+  x = torch.nn.Flatten()(x)
+  return torch.matmul(input=x, other=weight) + bias
+
+# class DenseBlock(torch.nn.Module):
+#   def __init__(self, weights : torch.Tensor, bias : torch.Tensor):
+#     super().__init__()
+#     self.weights = weights
+#     self.bias = bias
+#     self.network = torch.nn.Flatten()
+#   def forward(self, x : torch.Tensor):
+#     return torch.matmul(input=self.network(x), other=self.weights) + self.bias
 
 def CrossEntropy(logits : torch.Tensor, labels : torch.Tensor):
   """cross entropy loss for logits, 
