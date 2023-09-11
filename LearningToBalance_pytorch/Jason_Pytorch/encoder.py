@@ -5,7 +5,7 @@ from collections import OrderedDict
 
 class InferenceNetwork(torch.nn.Module):
     """
-    acquires balancing variables z, g, o (see explanation in get_posterior_distribution())
+    this is a dataset encoder. It acquires balancing variables z, g, o (see explanation in get_posterior_distribution())
     ways: Int number of ways
     shots: Int number of shots
     data_name : String name of data {cifar, mimgnet}
@@ -203,7 +203,7 @@ class InferenceNetwork(torch.nn.Module):
         zeta_distribution = self.get_zeta(task_summary)
         return omega_distribution, gamma_distribution, zeta_distribution
     def forward(self, x : torch.Tensor, y : torch.Tensor, do_sample : bool) -> tuple[
-        torch.Tensor, dict[str, torch.Tensor], dict[str, torch.Tensor], torch.Tensor | int]:
+        torch.Tensor, dict[str, torch.Tensor], dict[str, torch.Tensor], torch.Tensor]:
         omega_distribution, gamma_distribution, zeta_distribution = self.get_posterior_distribution(x, y)
         # get kl divergence
         omega_KL = torch.sum(KL_Diagonal_StandardNormal(omega_distribution))
@@ -211,7 +211,7 @@ class InferenceNetwork(torch.nn.Module):
         zeta_KL = torch.sum(KL_Diagonal_StandardNormal(zeta_distribution))
         # sample variable from posterior
         omega = torch.empty() # only for type-hinting
-        KL = 0
+        KL = torch.empty() # only for type-hinting
         if self.use_o == True:
             KL += omega_KL
             # .mean is a Tensor property of the distribution class. 
@@ -240,5 +240,5 @@ class InferenceNetwork(torch.nn.Module):
                 zeta[f'convolution_{l}_weight'] = z_weight[l - 1]
                 zeta[f'convolution_{l}_bias'] = z_bias[l - 1]
         return omega, gamma, zeta, KL
-        
-    
+
+

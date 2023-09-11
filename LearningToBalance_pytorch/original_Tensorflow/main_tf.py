@@ -6,10 +6,10 @@ import time
 import os
 from collections import OrderedDict
 
-from model import LearningToBalance
-from data import Data
+from model_tf import LearningToBalance
+from data_tf import Data
 from accumulator import Accumulator
-from misc import get_train_op, print_balancing_variables, str2list
+from misc_tf import get_train_op, print_balancing_variables, str2list
 
 parser = argparse.ArgumentParser()
 
