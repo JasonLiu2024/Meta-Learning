@@ -19,6 +19,7 @@
 *.pickle
 *.pth
 *.model
+*.npy
 # python
 __pycache__
 P.ipynb
