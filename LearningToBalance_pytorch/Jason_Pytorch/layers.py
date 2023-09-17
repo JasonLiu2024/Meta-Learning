@@ -1,6 +1,7 @@
 import numpy as np
 import torch
 import torch.nn.functional as F
+DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 """functions (NOT used)"""
 log = lambda x : torch.log(x + 1e-20)
@@ -16,8 +17,8 @@ def KL_Diagonal_StandardNormal(q : torch.distributions.Normal) -> torch.Tensor:
     """Kullback-Leibler divergence KL(p || q) 
     original name: kl_diagnormal_stdnormal()"""
     q_shape : torch.Size = q.mean.size()
-    p = torch.distributions.Normal(loc=torch.zeros(size=q_shape), 
-                                   scale=torch.ones(size=q_shape))
+    p = torch.distributions.Normal(loc=torch.zeros(size=q_shape).to(DEVICE), 
+                                   scale=torch.ones(size=q_shape).to(DEVICE))
     """we're looking for KL[q(φ |train data; ψ) || φ]
     where q(φ |train data; ψ) is our approximate posterior"""
     return torch.distributions.kl_divergence(q, p)
@@ -60,10 +61,10 @@ def Same_Padding(img_size, kernel_size, stride=1) -> int:
 
 def ConvolutionBlock_F(x : torch.Tensor, 
   weight : torch.Tensor, bias : torch.Tensor) -> torch.Tensor:
-  x = F.conv2d(x, weight, bias, stride=[1, 1, 1, 1]) + bias
+  x = F.conv2d(x, weight, bias, stride=1)
   x = F.relu(x)
-  x = F.batch_norm(x, running_mean=None, running_var=None)
-  x = torch.nn.MaxPool2d(kernel_size=(1,2,2,1), stride=(1,2,2,1))(x)
+  x = F.batch_norm(x, None, None, training=True)
+  x = torch.nn.MaxPool2d(kernel_size=(1, 1), stride=(1, 1))(x)
   return x
 
 # class ConvolutionBlock(torch.nn.Module):
@@ -85,7 +86,8 @@ def ConvolutionBlock_F(x : torch.Tensor,
 def DenseBlock_F(x : torch.Tensor,
   weight : torch.Tensor, bias : torch.Tensor) -> torch.Tensor:
   x = torch.nn.Flatten()(x)
-  return torch.matmul(input=x, other=weight) + bias
+  # return torch.matmul(input=x, other=weight) + bias
+  return F.linear(input=x, weight=weight, bias=bias)
 
 # class DenseBlock(torch.nn.Module):
 #   def __init__(self, weights : torch.Tensor, bias : torch.Tensor):
@@ -104,14 +106,27 @@ def CrossEntropy(logits : torch.Tensor, labels : torch.Tensor):
   return torch.mean(loss)
 
 def CrossEntropy_Class(logits : torch.Tensor, labels : torch.Tensor):
-  loss = torch.nn.functional.cross_entropy(logits, labels)
+  # print(f"CrossEntropy_Class")
+  # print(f"\tlogits shape: {logits.shape}")
+  # print(f"\tlabels shape: {labels.shape}")
+  loss = torch.nn.functional.cross_entropy(logits, labels, reduction='none')
+  # print(f"loss: {loss}")
+  # print(f"\tloss shape {loss.shape}")
   # tf.expand_dims() == torch.unsqueeze()
   # source: https://discuss.pytorch.org/t/equivalent-to-torch-unsqueeze-in-tensorflow/26379
-  perclass = torch.matmul(torch.transpose(labels, 0, 1), torch.unsqueeze(loss, 1))
+  # print(f"CrossEntropy_Class, labels: \n\t{labels}")
+  right = torch.unsqueeze(loss, 1)
+  # print(f"\tright shape: {right.shape}, dtype {right.dtype}")
+  left = torch.transpose(torch.unsqueeze(labels, 1), 0, 1)
+  # print(f"\tleft shapeL {left.shape}, dtype {left.dtype}")
+  perclass = torch.matmul(left.to(torch.float32), right)
+  # print(f"\tperclass shape: {perclass.shape}")
   # source: https://stackoverflow.com/questions/65092587/tensorflow-to-pytorch
   # source: https://stackoverflow.com/questions/59132647/tf-cast-equivalent-in-pytorch
-  N = float(labels.shape[0])
-  way = float(labels.shape[1])
+  N = float(torch.unsqueeze(labels, 1).shape[1]) # number of 
+  # print(f"\nN: {N}")
+  way = float(torch.unsqueeze(labels, 1).shape[0]) # number of classes ?
+  # print(f"\nway: {way}")
   # squeeze removes a dimension if it's size is 1
   # source: https://pytorch.org/docs/stable/generated/torch.squeeze.html
   return torch.squeeze(perclass) * way / N

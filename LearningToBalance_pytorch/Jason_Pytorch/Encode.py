@@ -2,8 +2,30 @@ import torch
 import numpy as np
 from layers import KL_Diagonal_StandardNormal
 from collections import OrderedDict
-DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
+import tensorflow as tf
 
+def dense(x, dim, **kwargs):
+  return tf.layers.dense(x, dim,
+      kernel_initializer=tf.random_normal_initializer(stddev=0.02),
+      bias_initializer=tf.zeros_initializer(), **kwargs)
+
+def conv(x, filters, kernel_size=3, strides=1, **kwargs):
+  return tf.layers.conv2d(x, filters, kernel_size, strides, padding='same',
+      kernel_initializer=tf.truncated_normal_initializer(stddev=0.02),
+      bias_initializer=tf.zeros_initializer(), **kwargs)
+
+def pool(x, **kwargs):
+  return tf.layers.max_pooling2d(x, 2, 2, padding='valid', **kwargs)
+
+def conv_block(x, w, b, bn_scope='conv_bn'):
+  x = tf.nn.conv2d(x, w, [1,1,1,1], 'SAME') + b # NHWC
+  x = batch_norm(x, activation_fn=relu, scope=bn_scope, reuse=tf.AUTO_REUSE)
+  x = tf.nn.max_pool(x, [1,2,2,1], [1,2,2,1], 'VALID')
+  return x
+
+def dense_block(x, w, b):
+  x = tf.matmul(flatten(x), w) + b
+  return x
 
 class InferenceNetwork(torch.nn.Module):
     """
@@ -104,12 +126,8 @@ class InferenceNetwork(torch.nn.Module):
         # print(f"get_MeanVarianceCardinality::input shape {x.size()}")
         variance, mean = torch.var_mean(input=x, dim=0)
         # print(f"get_MeanVarianceCardinality::mean shape {mean.size()}")
-        cardinality = torch.tile(input=torch.reshape(input=cardinality, shape=[-1]), dims=list(mean.size())).to(DEVICE)
+        cardinality = torch.tile(input=torch.reshape(input=cardinality, shape=[-1]), dims=list(mean.size()))
         # print(f"get_MeanVarianceCardinality::cardinality {cardinality.size()}")
-        # print(f"get_MeanVarianceCardinality")
-        # print(f"\tmean device: {mean.device}")
-        # print(f"\tvariance device: {variance.device}")
-        # print(f"\tcardinality device: {cardinality.device}")
         class_summary = torch.stack(tensors=[mean, variance, cardinality], dim=1)
         # print(f"get_MeanVarianceCardinality::output shape: {class_summary.size()}")
         return class_summary
@@ -122,9 +140,9 @@ class InferenceNetwork(torch.nn.Module):
         x = self.network_class_encoder_1(x)
         # print(f"statistics_pooling_1::x shape after encode: {x.shape}")
         # statistics pooling 1
-        y_sum = torch.sum(y, 0)
+        y_sum = torch.sum(y, 1)
         # print(f"statistics_pooling_1::y_sum shape {y_sum.size()}")
-        y_largest_index = torch.argmax(y, 0)
+        y_largest_index = torch.argmax(y, 1)
         MeanVarianceCardinality_list = []
         Cardinality_list : list[torch.Tensor] = []
         for cls in range(self.number_of_classes):
@@ -139,7 +157,7 @@ class InferenceNetwork(torch.nn.Module):
             # print(f"Cardinality_cls: {Cardinality_cls}")
             # print(f"Cardinality_cls shape: {Cardinality_cls.size()}")
             Cardinality_list.append(Cardinality_cls)
-            MeanVarianceCardinality = self.get_MeanVarianceCardinality(x_cls, Cardinality_cls.to(DEVICE))
+            MeanVarianceCardinality = self.get_MeanVarianceCardinality(x_cls, Cardinality_cls)
             MeanVarianceCardinality_list.append(MeanVarianceCardinality)
         # print(f"statistics_pooling_1()::MeanVarianceCardinality_list {MeanVarianceCardinality_list[0].size()}")
         class_summary : torch.Tensor = torch.stack(MeanVarianceCardinality_list, 0)
@@ -170,10 +188,10 @@ class InferenceNetwork(torch.nn.Module):
         sigma = torch.squeeze(self.network_omega_std(summary_o))
         # torch.nn.Softplus works on number input only
         # BUT, torch.nn.functional.softplus() works on entire tensor, element-wise
-        # print(f"encoder get_omega distribution:")
-        # print(f"\tembed shape {class_summary_embedding.shape}")
-        # print(f"\tmu shape    {mu.shape}")
-        # print(f"\tsigma shape {sigma.shape}")
+        print(f"encoder get_omega distribution:")
+        print(f"\tembed shape {class_summary_embedding.shape}")
+        print(f"\tmu shape    {mu.shape}")
+        print(f"\tsigma shape {sigma.shape}")
         q = torch.distributions.Normal(mu, torch.nn.functional.softplus(sigma))
         return q
     def get_gamma(self, task_summary : torch.Tensor) -> torch.distributions.Normal:
@@ -184,10 +202,10 @@ class InferenceNetwork(torch.nn.Module):
         task_summary_embedding = self.network_gamma(task_summary)
         mu = torch.squeeze(self.network_gamma_mean(task_summary_embedding))
         sigma = torch.squeeze(self.network_gamma_std(task_summary_embedding))
-        # print(f"encoder get_gamma distribution:")
-        # print(f"\tembed shape {task_summary_embedding.shape}")
-        # print(f"\tmu shape    {mu.shape}")
-        # print(f"\tsigma shape {sigma.shape}")
+        print(f"encoder get_gamma distribution:")
+        print(f"\tembed shape {task_summary_embedding.shape}")
+        print(f"\tmu shape    {mu.shape}")
+        print(f"\tsigma shape {sigma.shape}")
         q = torch.distributions.Normal(mu, torch.nn.functional.softplus(sigma))
         return q
     def get_zeta(self, task_summary : torch.Tensor) -> torch.distributions.Normal:
@@ -198,10 +216,10 @@ class InferenceNetwork(torch.nn.Module):
         task_summary_embedding = self.network_zeta(task_summary)
         mu = torch.squeeze(self.network_zeta_mean(task_summary_embedding))
         sigma = torch.squeeze(self.network_zeta_std(task_summary_embedding))
-        # print(f"encoder get_zeta distribution:")
-        # print(f"\tembed shape {task_summary_embedding.shape}")
-        # print(f"\tmu shape    {mu.shape}")
-        # print(f"\tsigma shape {sigma.shape}")
+        print(f"encoder get_zeta distribution:")
+        print(f"\tembed shape {task_summary_embedding.shape}")
+        print(f"\tmu shape    {mu.shape}")
+        print(f"\tsigma shape {sigma.shape}")
         q = torch.distributions.Normal(mu, torch.nn.functional.softplus(sigma))
         return q
     def get_posterior_distribution(self, x : torch.Tensor, y : torch.Tensor) -> tuple[
@@ -228,45 +246,44 @@ class InferenceNetwork(torch.nn.Module):
         gamma_KL = torch.sum(KL_Diagonal_StandardNormal(gamma_distribution))
         zeta_KL = torch.sum(KL_Diagonal_StandardNormal(zeta_distribution))
         # sample variable from posterior
-        omega = torch.empty(0).to(DEVICE) # only for type-hinting
-        KL = torch.empty(0).to(DEVICE) # only for type-hinting
+        omega = torch.empty(0) # only for type-hinting
+        KL = torch.empty(0) # only for type-hinting
         if self.use_o == True:
             KL += omega_KL
-            # print(f"encoder, getting omega")
+            print(f"encoder, getting omega")
             # .mean is a Tensor property of the distribution class. 
             # DON'T do .mean() <- get 'Tensor not callable'
             # source: https://pytorch.org/docs/stable/distributions.html#torch.distributions.distribution.Distribution.mean
             omega = omega_distribution.sample() if do_sample else omega_distribution.mean
-            # print(f"\tOMEGA shape {omega.shape}")
+            print(f"\tOMEGA shape {omega.shape}")
         gamma = {}
         if self.use_g == True:
             KL += gamma_KL
             g = gamma_distribution.sample() if do_sample else gamma_distribution.mean
             # five 1's because gamma dimension is 5! see __init__()
             g = torch.split(g, [1, 1, 1, 1, 1])
-            # print(f"encoder, getting gamma:")
+            print(f"encoder, getting zeta:")
             for l in [1, 2, 3, 4]:
                 gamma[f'convolution_{l}_weight'] = g[l - 1]
                 gamma[f'convolution_{l}_bias'] = g[l - 1]
-                # print(f"\tconv layer {l}, GAMMA weight shape {gamma[f'convolution_{l}_weight'].shape}")
-                # print(f"\tconv layer {l}, GAMMA bias shape   {gamma[f'convolution_{l}_bias'].shape}")
+                print(f"\tconv layer {l}, GAMMA weight shape {gamma[f'convolution_{l}_weight'].shape}")
+                print(f"\tconv layer {l}, GAMMA bias shape   {gamma[f'convolution_{l}_bias'].shape}")
             gamma[f'dense_weight'] = g[4]
             gamma[f'dense_bias'] = g[4]
-            # print(f"\tlinear layer, GAMMA weight shape {gamma[f'dense_weight'].shape}")
-            # print(f"\tlinear layer, GAMMA bias shape   {gamma[f'dense_bias'].shape}")
+            print(f"\tlinear layer, GAMMA weight shape {gamma[f'dense_weight'].shape}")
+            print(f"\tlinear layer, GAMMA bias shape   {gamma[f'dense_bias'].shape}")
         zeta = {}
         if self.use_z == True:
             KL += zeta_KL
             z = zeta_distribution.sample() if do_sample else zeta_distribution.mean
             z_weight = torch.split(z[:self.number_of_channels * 4], [self.number_of_channels] * 4)
             z_bias = torch.split(z[self.number_of_channels * 4:], [self.number_of_channels] * 4)
-            # print(f"encoder, getting zeta:")
+            print(f"encoder, getting zeta:")
             for l in [1, 2, 3, 4]:
-                # UNsqueeze the [64] tensor, so multiplying [64] and [64, 3, 3, 3]-shaped tensor works
-                zeta[f'convolution_{l}_weight'] = z_weight[l - 1][:, None, None, None].to(DEVICE)
-                zeta[f'convolution_{l}_bias'] = z_bias[l - 1].to(DEVICE)
-                # print(f"\tconv layer {l}, ZETA weight shape {zeta[f'convolution_{l}_weight'].shape}")
-                # print(f"\tconv layer {l}, ZETA bias shape   {zeta[f'convolution_{l}_bias'].shape}")
+                zeta[f'convolution_{l}_weight'] = z_weight[l - 1]
+                zeta[f'convolution_{l}_bias'] = z_bias[l - 1]
+                print(f"\tconv layer {l}, ZETA weight shape {zeta[f'convolution_{l}_weight'].shape}")
+                print(f"\tconv layer {l}, ZETA bias shape   {zeta[f'convolution_{l}_bias'].shape}")
         return omega, gamma, zeta, KL
 
 
