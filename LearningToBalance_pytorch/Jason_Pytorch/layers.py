@@ -61,10 +61,17 @@ def Same_Padding(img_size, kernel_size, stride=1) -> int:
 
 def ConvolutionBlock_F(x : torch.Tensor, 
   weight : torch.Tensor, bias : torch.Tensor) -> torch.Tensor:
-  x = F.conv2d(x, weight, bias, stride=1)
+  # print(f"ConvolutionBlock_F: input shape {x.shape}") # checks out
+  x = F.conv2d(x, weight, bias, stride=1, padding='same')
+  x = F.batch_norm(x, None, None, training=True) 
+  # batch norm BEFORE relu!
+  # NO max pooling
   x = F.relu(x)
-  x = F.batch_norm(x, None, None, training=True)
-  x = torch.nn.MaxPool2d(kernel_size=(1, 1), stride=(1, 1))(x)
+  # print(f"ConvolutionBlock_F: x shape: {x.shape}")
+  # running_mu = torch.zeros(x.shape[1]).to(DEVICE)
+  # running_var = torch.ones(x.shape[1]).to(DEVICE)
+  # print(f"ConvolutionBlock_F: x infinite?: {torch.isfinite(x)}")
+  # x = F.max_pool2d(input=x, kernel_size=(1, 1), stride=(1, 1))
   return x
 
 # class ConvolutionBlock(torch.nn.Module):
@@ -85,7 +92,7 @@ def ConvolutionBlock_F(x : torch.Tensor,
 
 def DenseBlock_F(x : torch.Tensor,
   weight : torch.Tensor, bias : torch.Tensor) -> torch.Tensor:
-  x = torch.nn.Flatten()(x)
+  # x = torch.nn.Flatten()(x)
   # return torch.matmul(input=x, other=weight) + bias
   return F.linear(input=x, weight=weight, bias=bias)
 
@@ -102,14 +109,16 @@ def CrossEntropy(logits : torch.Tensor, labels : torch.Tensor):
   """cross entropy loss for logits, 
   \nsoftmax is part of cross_entropy()"""
   # source: https://stackoverflow.com/questions/49377483/about-tf-nn-softmax-cross-entropy-with-logits-v2
-  loss = torch.nn.functional.cross_entropy(input=logits, target=labels)
+  logits = F.softmax(logits, dim=1)
+  loss = F.cross_entropy(input=logits, target=labels)
   return torch.mean(loss)
 
 def CrossEntropy_Class(logits : torch.Tensor, labels : torch.Tensor):
   # print(f"CrossEntropy_Class")
   # print(f"\tlogits shape: {logits.shape}")
   # print(f"\tlabels shape: {labels.shape}")
-  loss = torch.nn.functional.cross_entropy(logits, labels, reduction='none')
+  logits = F.softmax(logits, dim=1)
+  loss = F.cross_entropy(logits, labels, reduction='none')
   # print(f"loss: {loss}")
   # print(f"\tloss shape {loss.shape}")
   # tf.expand_dims() == torch.unsqueeze()

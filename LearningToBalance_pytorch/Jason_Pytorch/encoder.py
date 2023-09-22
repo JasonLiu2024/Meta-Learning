@@ -21,7 +21,7 @@ class InferenceNetwork(torch.nn.Module):
         if data_name == 'cifar':
             self.xdim = 32 
             self.input_channel = 3
-            self.number_of_channels = 64 # likely the number of hidden channels!
+            self.number_of_channels = 32 # likely the number of hidden channels!
         elif data_name == 'mimgnet':
             self.xdim = 84 
             self.input_channel = 3

@@ -78,7 +78,8 @@ class LearningToBalanaceDataset(torch.utils.data.TensorDataset):
         # break
         """count of support images are varying, due to sample -> need to PAD with all-zeros!
         because dataloader calls torch.stack on each item in the returning tuple across all returning tuples"""
-        to_be_padded = self.dictionary[class_index]['image'][sample_indices[:actual_shot]]
+        to_be_padded = self.dictionary[class_index]['image'][sample_indices[:actual_shot]].reshape([-1, 3, 32, 32])
+        # print(f"pre-pad image support {to_be_padded.shape}")
         if actual_shot < self.max_number_of_shot:
             pad_amount = self.max_number_of_shot - actual_shot
             # print(f"pad amount: {pad_amount}")
@@ -88,29 +89,20 @@ class LearningToBalanaceDataset(torch.utils.data.TensorDataset):
         else:
             image_support_padded = to_be_padded
             label_support_padded = [label] * actual_shot
-        images_support.append(image_support_padded)
+        # print(f"padded image support: {image_support_padded.shape}")
+        images_support.extend(torch.tensor(image_support_padded, dtype=torch.float32))
         labels_support.extend(label_support_padded)
         # print(f"labels_support: {labels_support}")
         # labels_support.append(self.dictionary[class_index]['label'][sample_indices[:actual_shot]])
         """count of query images are fixed, no need to pad"""
-        images_query.append(self.dictionary[class_index]['image'][sample_indices[actual_shot:]])
+        images_query.extend(torch.tensor(self.dictionary[class_index]['image'][sample_indices[actual_shot:]].reshape([-1, 3, 32, 32]), dtype=torch.float32))
         labels_query.extend([label] * self.number_of_query)
         # labels_query.append(self.dictionary[class_index]['label'][sample_indices[actual_shot:]])
     # print(f"\tgot {len(class_indices)} classes")
-    images_support = torch.Tensor(np.concatenate(images_support, 0))
-    labels_support = torch.Tensor(labels_support)
-    images_query = torch.Tensor(np.concatenate(images_query, 0))
-    labels_query = torch.Tensor(labels_query)
-    # print(f"\timages_support shape: {images_support.shape}")
-    # print(f"\tlabels_support_shape: {labels_support.shape}")
-    # print(f"\timages_query shape: {images_query.shape}")
-    # print(f"\tlabels_query shape: {labels_query.shape}")
-    # task = (
-    #    images_support.to(DEVICE),
-    #    labels_support.to(DEVICE),
-    #    images_query.to(DEVICE),
-    #    labels_query.to(DEVICE)
-    # )
+    images_support = torch.stack(images_support)
+    labels_support = torch.tensor(labels_support)
+    images_query = torch.stack(images_query)
+    labels_query = torch.tensor(labels_query)
     return images_support.to(DEVICE), labels_support.to(DEVICE), images_query.to(DEVICE), labels_query.to(DEVICE)
 
 class LearningToBalanceSampler(torch.utils.data.Sampler):
@@ -129,6 +121,9 @@ class LearningToBalanceSampler(torch.utils.data.Sampler):
         )
     def __len__(self):
         return self.total_tasks
+
+def identity(x):
+    return x
 
 def get_dataloader(class_names : list[str], max_number_of_shot : int, 
                    number_of_query : int, way : int, total_tasks : int,

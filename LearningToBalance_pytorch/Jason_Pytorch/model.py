@@ -3,7 +3,7 @@ import numpy as np
 from layers import *
 from encoder import InferenceNetwork
 from torch import autograd
-NUMBER_OF_HIDDEN_CHANNELS = 64 
+NUMBER_OF_HIDDEN_CHANNELS = 32 
 DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
 class LearningToBalance():
   def __init__(self, data_name : str, number_of_inner_gradient_steps : int,
@@ -39,15 +39,18 @@ class LearningToBalance():
     self.parameter = self.get_parameter_maml('theta') # 'this is the 'theta'
     self.alpha = self.get_parameter_maml('alpha')
     """training"""
-    self.optimizer = torch.optim.Adam(params=list(self.parameter.values()) + list(self.alpha.values()), lr=self.outer_lr)
+    self.optimizer = torch.optim.Adam(params=list(self.parameter.values()) + list(self.alpha.values()), lr=self.outer_lr,
+                                      )
     self.validation_interval = 50
   def get_parameter_maml(self, name : str) -> dict[str, torch.Tensor]:
     """initializes self.parameters"""
     # initializers
     if name == 'theta':
-      init_convolution  = lambda x : torch.nn.init.trunc_normal_(x, std=0.02)
+      # init_convolution  = lambda x : torch.nn.init.trunc_normal_(x, std=0.02)
+      init_convolution  = lambda x : torch.nn.init.xavier_uniform_(x)
       init_bias         = lambda x : torch.nn.init.zeros_(x)
-      init_dense        = lambda x : torch.nn.init.normal_(x, std=0.02)
+      # init_dense        = lambda x : torch.nn.init.normal_(x, std=0.02)
+      init_dense        = lambda x : torch.nn.init.xavier_uniform_(x)
     else: # name == 'alpha'
       init_convolution  = lambda x : torch.nn.init.constant_(x, 0.01)
       init_bias         = lambda x : torch.nn.init.constant_(x, 0.01)
@@ -117,24 +120,29 @@ class LearningToBalance():
   #     parameter_dictionary[f'dense_bias'] = torch.tile(single_bias, [self.number_of_classes])
   #   return parameter_dictionary
 
-  def forward_theta(self, x : torch.Tensor, theta : dict[str, torch.Tensor]):
+  def forward_theta(self, x : torch.Tensor, theta : dict[str, torch.Tensor], name : str):
     x = torch.reshape(x, [-1, self.input_channel, self.xdim, self.xdim])
     # print(f"model forward_theta:")
     for l in range(1, self.number_of_convolutional_layer + 1):
-      weight = theta[f'convolution_{l}_weight']
-      bias = theta[f'convolution_{l}_bias']
       # more steps inside ConvolutionBlock_F, compared to original MAML code!
       # print(f"\tconv layer {l}, weight shape {theta[f'convolution_{l}_weight'].shape}")
       # print(f"\tconv layer {l}, bias shape   {theta[f'convolution_{l}_bias'].shape}")
       # print(f"\tinput dimension: {x.shape}")
-      x = ConvolutionBlock_F(x, weight, bias) # just executes the calculation
-    weight = theta[f'dense_weight']
-    bias = theta[f'dense_bias']
+      if (x.isnan().any()):
+        print(f"forward raw: nan in put")
+      x = F.conv2d(x, theta[f'convolution_{l}_weight'], theta[f'convolution_{l}_bias'], stride=1, padding='same')
+      if (x.isnan().any()):
+        print(f"forward conv2d: nan in put")
+      x = F.batch_norm(x, None, None, training=True)
+      if (x.isnan().any()):
+        print(f"forward batch_norm: nan in put")
+      x = F.relu(x)
+      # x = ConvolutionBlock_F(x, theta[f'convolution_{l}_weight'], theta[f'convolution_{l}_bias']) # just executes the above calculation
     x = torch.mean(x, dim=[2, 3])
     # print(f"\tlinear layer, weight shape {weight.shape}")
     # print(f"\tlinear layer, bias shape   {weight.shape}")
     # print(f"\tinput dimension: {x.shape}")
-    x = DenseBlock_F(x, weight, bias) # just executes the calculation
+    x = DenseBlock_F(x, theta[f'dense_weight'], theta[f'dense_bias']) # just executes the calculation
     # print(f"result of a forward_theta shape: {x.shape}")
     return x
   def zeta_update_initialization(self, 
@@ -179,46 +187,54 @@ class LearningToBalance():
       return theta_tensor - delta * torch.exp(gamma_tensor)
     else:
       return theta_tensor - delta
-  def _inner_loop(self, x_train : torch.Tensor, y_train : torch.Tensor, train : bool,
-    theta : dict[str, torch.Tensor], omega : torch.Tensor, gamma : dict[str, torch.Tensor]) -> tuple[dict[str, torch.Tensor], list[torch.Tensor]]:
-    theta_update_by_inner_loop : dict[str, torch.Tensor] = {}
+  def _inner_loop(self, x_train : torch.Tensor, y_train : torch.Tensor, train : bool, 
+    omega : torch.Tensor, gamma : dict[str, torch.Tensor]) -> tuple[dict[str, torch.Tensor], list[torch.Tensor]]:
+    # theta_update_by_inner_loop : dict[str, torch.Tensor] = {}
     """return: updated parameters theta, list of inner accuracy (length is number_of_inner_gradient_steps + 1)"""
     # print(f"model _inner_loop")
-    inner_loss : torch.Tensor = torch.empty(0) # only for type hint
+    # inner_loss : torch.Tensor = torch.empty(0) # only for type hint
     accuracy_list = []
     # print(f"model _inner_loop:")
     # https://pytorch.org/docs/stable/generated/torch.nn.CrossEntropyLoss.html#crossentropyloss
     # cross-entropy expects: logits_dim=[batch, class], target=[batch]
     y_train = y_train.to(torch.int64)
+    param_cloned = {
+            k: torch.clone(v)
+            for k, v in self.parameter.items()
+            }
     for _ in range(self.number_of_inner_gradient_steps):
-      inner_logits = self.forward_theta(x_train, theta)
+      if (x_train.isnan().any()):
+        print(f"forward batch_norm: nan in put")
+      inner_logits = self.forward_theta(x_train, param_cloned, name="inner_loop") # predictions
       # print(f"\tinner_logits shape: {inner_logits.shape}, dtype: {inner_logits.dtype}")
       # print(f"\ty_train shape:      {y_train.shape}, dtype: {y_train.dtype}")
-      cross_entropy_per_class = CrossEntropy_Class(inner_logits, y_train)
+      # cross_entropy_per_class = CrossEntropy_Class(inner_logits, y_train)
+      cross_entropy_per_class = F.cross_entropy(inner_logits, y_train)
       inner_accuracy = Accuracy(inner_logits, y_train)
       """omega: modulate class-specific loss"""
       inner_loss = self.omega_modify_loss_of_class(omega, cross_entropy_per_class)
       # make computation graph, so 2nd-order derivativa can be calculated
       # when we call .backward() on OUTER loss
       # when train, DO make graph, to allow back propagation; when validate, NO make graph!
-      grads = autograd.grad(outputs=inner_loss, inputs=list(theta.values()), create_graph=train)
-      gradient_dictionary : dict[str, torch.Tensor] = dict(zip(theta.keys(), grads))
+      grads = autograd.grad(
+        outputs=inner_loss, inputs=param_cloned.values(), create_graph=train)
+      gradient_dictionary : dict[str, torch.Tensor] = dict(zip(param_cloned.keys(), grads))
       accuracy_list.append(inner_accuracy)
       """inner gradient step"""
-      for layer_key in theta.keys():
+      for layer_key in param_cloned.keys():
         if self.use_alpha: # manually checked that alpha is bound
           delta = self.alpha[layer_key] * gradient_dictionary[layer_key]
         else:
           delta = self.inner_lr * gradient_dictionary[layer_key]
         """use gamma: modulate task-specific learning rate"""
-        theta_update_by_inner_loop[layer_key] = self.gamma_modeify_inner_step_learning_rate(
-          theta_tensor=theta[layer_key], gamma_tensor=gamma[layer_key], delta=delta
+        param_cloned[layer_key] = self.gamma_modeify_inner_step_learning_rate(
+          theta_tensor=param_cloned[layer_key], gamma_tensor=gamma[layer_key], delta=delta
         )
-      # no gradient update for this last logit and accuracy
-      last_inner_logits = self.forward_theta(x_train, theta_update_by_inner_loop)
-      last_inner_accuracy = Accuracy(last_inner_logits, y_train)
-      accuracy_list.append(last_inner_accuracy.item())
-    return theta_update_by_inner_loop, accuracy_list
+    # no gradient update for this last logit and accuracy
+    last_inner_logits = self.forward_theta(x_train, param_cloned, name="inner_loop last")
+    last_inner_accuracy = Accuracy(last_inner_logits, y_train)
+    accuracy_list.append(last_inner_accuracy.item())
+    return param_cloned, accuracy_list
   def _outer_step_single_task(self, input_task : tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor], 
     train : bool) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, list[torch.Tensor]]:
     """return: cross entropy, outer accuracy, KL, prediction, inner accuracy
@@ -232,10 +248,6 @@ class LearningToBalance():
     # so dimension becomes [batch of task, batch, channels, width, height]
     # print(f"input task shape: {input_task.shape}")
     x_train, y_train, x_test, y_test = input_task
-    # x_train = x_train[0]
-    # y_train = y_train[0]
-    # x_test = x_test[0]
-    # y_test = y_test[0]
     # print(f"x_train shape {x_train.shape}")
     # print(f"y_train shape {y_train.shape}")
     # print(f"x_test shape  {x_test.shape}")
@@ -251,10 +263,12 @@ class LearningToBalance():
     theta_update_by_zeta = self.zeta_update_initialization(zeta, self.parameter)
     self.parameter.update(theta_update_by_zeta)
     """inner gradient steps; omega & gamma for task_specific modulation"""
-    theta_update_by_inner_loop, inner_accuracy = self._inner_loop(x_train, y_train, train, self.parameter, omega, gamma)
-    self.parameter.update(theta_update_by_inner_loop)
+    theta_update_by_inner_loop, inner_accuracy = self._inner_loop(x_train, y_train, train, omega, gamma)
+    # self.parameter.update(theta_update_by_inner_loop)
     """outer-loss & test_accuracy"""
-    logits_test = self.forward_theta(x_test, self.parameter)
+    logits_test = self.forward_theta(x_test, theta_update_by_inner_loop, name="outer loop")
+    # print(f"logits test: \n{logits_test}")
+    # print(f"y_test: {y_test.to(torch.int64)}")
     cross_entropy = CrossEntropy(logits_test, y_test.to(torch.int64))
     outer_accuracy = Accuracy(logits_test, y_test)
     prediction = F.softmax(logits_test, -1)
@@ -283,62 +297,65 @@ class LearningToBalance():
       prediction_list.append(prediction)
       KL_list.append(KL)
     # print(f"cross_entropy_list length: {len(cross_entropy_list)}")
+    # print(f"cross-entropy list: \n{cross_entropy_list}")
     loss = torch.mean(torch.stack(cross_entropy_list))
+    # print(f"loss: \n{loss}")
     KL = torch.mean(torch.stack(KL_list))
     return loss, torch.mean(torch.stack(outer_accuracy_list)), KL, torch.mean(torch.Tensor(inner_accuracy_list), dim=0)
   def train(self, train_dataloader, valid_dataloader, ):
     """return: train loss, valid loss, train accuracy dictionary, valid accuracy dicitonary"""
-    print(f"T-R-A-I-N")
-    print(f"train_dataloader length? {len(train_dataloader)}")
-    print(f"valid_dataloader length? {len(valid_dataloader)}")
-    # print(f"length of dataloader {len(train_dataloader)}")
-    train_loss = []
-    train_outer_accuracy = [] # outer means query; inner means support
-    train_inner_accuracy_fresh = [] # pre-adapting
-    train_inner_accuracy_adapt = [] # post-adapting
-    """TODO: show valid loss s.t. it reflects when number of validation != number of training, or throw Error"""
-    valid_loss = []
-    valid_outer_accuracy = [] # outer means query; inner means support
-    valid_inner_accuracy_fresh = [] # pre-adapting
-    valid_inner_accuracy_adapt = [] # post-adapting
-    # print(f"yo")
-    for step, task_batch in enumerate(train_dataloader):
-      """task_batch is a BATCH (list) of tasks, batch = batch_size,
-      shape: [task batch, number of classes, width, height, number of channels]
-      e.g. [5, 70 = way * (shot + query), 32, 32, 3 bc RGB]"""
-      # print(f"train step {step}")
-      # enumerated dataloader is a list[tuple[stuffs]]
-      # print(f"type of dataloader: {type(train_dataloader)}")
-      # print(f"type of task batch: {type(task_batch)}")
-      self.optimizer.zero_grad()
-      outer_loss, outer_accuracy, KL, inner_accuracy = self._outer_step_(task_batch, train=True)
-      # print(f"ran _outer_step()")
-      outer_loss.backward(retain_graph=True)
-      self.optimizer.step()
-      train_loss.append(outer_loss.item())
-      train_outer_accuracy.append(outer_accuracy)
-      train_inner_accuracy_fresh.append(inner_accuracy[0])
-      train_inner_accuracy_adapt.append(inner_accuracy[-1])
-      if step % self.validation_interval == 0: # it's validation time!
-        print(f"V-A-L-I-D")
-        for v_step, task_batch in enumerate(valid_dataloader):
-          # print(f"valid step {v_step}")
-          outer_loss, outer_accuracy, KL, inner_accuracy = self._outer_step_(task_batch, train=False)
-          valid_loss.append(outer_loss.item())
-          valid_outer_accuracy.append(outer_accuracy)
-          valid_inner_accuracy_fresh.append(inner_accuracy[0])
-          valid_inner_accuracy_adapt.append(inner_accuracy[-1])
-    train_accuracy = {
-      'outer':            train_outer_accuracy,
-      'inner pre-adapt':  train_inner_accuracy_fresh,
-      'inner post_adapt': train_inner_accuracy_adapt
-    }
-    valid_accuracy = {
-      'outer':            valid_outer_accuracy,
-      'inner pre-adapt':  valid_inner_accuracy_fresh,
-      'inner post_adapt': valid_inner_accuracy_adapt
-    }
-    return train_loss, valid_loss, train_accuracy, valid_accuracy
+    with autograd.detect_anomaly():
+      print(f"T-R-A-I-N")
+      print(f"train_dataloader length? {len(train_dataloader)}")
+      print(f"valid_dataloader length? {len(valid_dataloader)}")
+      # print(f"length of dataloader {len(train_dataloader)}")
+      train_loss = []
+      train_outer_accuracy = [] # outer means query; inner means support
+      train_inner_accuracy_fresh = [] # pre-adapting
+      train_inner_accuracy_adapt = [] # post-adapting
+      """TODO: show valid loss s.t. it reflects when number of validation != number of training, or throw Error"""
+      valid_loss = []
+      valid_outer_accuracy = [] # outer means query; inner means support
+      valid_inner_accuracy_fresh = [] # pre-adapting
+      valid_inner_accuracy_adapt = [] # post-adapting
+      # print(f"yo")
+      for step, task_batch in enumerate(train_dataloader):
+        """task_batch is a BATCH (list) of tasks, batch = batch_size,
+        shape: [task batch, number of classes, width, height, number of channels]
+        e.g. [5, 70 = way * (shot + query), 32, 32, 3 bc RGB]"""
+        # print(f"train step {step}")
+        # enumerated dataloader is a list[tuple[stuffs]]
+        # print(f"type of dataloader: {type(train_dataloader)}")
+        # print(f"type of task batch: {type(task_batch)}")
+        self.optimizer.zero_grad()
+        outer_loss, outer_accuracy, KL, inner_accuracy = self._outer_step_(task_batch, train=True)
+        # print(f"ran _outer_step()")
+        outer_loss.backward()
+        self.optimizer.step()
+        train_loss.append(outer_loss.item())
+        train_outer_accuracy.append(outer_accuracy)
+        train_inner_accuracy_fresh.append(inner_accuracy[0])
+        train_inner_accuracy_adapt.append(inner_accuracy[-1])
+        if step % self.validation_interval == 0: # it's validation time!
+          print(f"\tV-A-L-I-D")
+          for v_step, task_batch in enumerate(valid_dataloader):
+            # print(f"valid step {v_step}")
+            outer_loss, outer_accuracy, KL, inner_accuracy = self._outer_step_(task_batch, train=False)
+            valid_loss.append(outer_loss.item())
+            valid_outer_accuracy.append(outer_accuracy)
+            valid_inner_accuracy_fresh.append(inner_accuracy[0])
+            valid_inner_accuracy_adapt.append(inner_accuracy[-1])
+      train_accuracy = {
+        'outer':            train_outer_accuracy,
+        'inner pre-adapt':  train_inner_accuracy_fresh,
+        'inner post_adapt': train_inner_accuracy_adapt
+      }
+      valid_accuracy = {
+        'outer':            valid_outer_accuracy,
+        'inner pre-adapt':  valid_inner_accuracy_fresh,
+        'inner post_adapt': valid_inner_accuracy_adapt
+      }
+      return train_loss, valid_loss, train_accuracy, valid_accuracy
   def test(self, test_dataloader):
     """return: test loss, test accuracy dictionary"""
     print("T-E-S-T")
