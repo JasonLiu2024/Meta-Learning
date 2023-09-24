@@ -1,5 +1,5 @@
 import numpy as np
-import os
+from torch.utils.data import dataset, sampler, dataloader
 import torch
 import matplotlib.pyplot as plt
 DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -9,12 +9,12 @@ DATA_FOLDER = "../data/sorted_by_class"
 
 """reference: the original implementation of MAML"""
 
-def show(image_array, title=None):
+def show(image_array, title=""):
     f, ax = plt.subplots(figsize=(2, 2))
     ax.imshow(np.squeeze(image_array))
     ax.set_title(title)
 
-class LearningToBalanaceDataset(torch.utils.data.TensorDataset):
+class LearningToBalanaceDataset(dataset.Dataset):
   """a meta learning dataset; items are TASKs"""
   def __init__(self, max_number_of_shot : int, number_of_query : int, 
                way : int, task_dictionary : dict):
@@ -105,20 +105,21 @@ class LearningToBalanaceDataset(torch.utils.data.TensorDataset):
     labels_query = torch.tensor(labels_query)
     return images_support.to(DEVICE), labels_support.to(DEVICE), images_query.to(DEVICE), labels_query.to(DEVICE)
 
-class LearningToBalanceSampler(torch.utils.data.Sampler):
+class LearningToBalanceSampler(sampler.Sampler):
     def __init__(self, indices_to_sample_from, way, total_tasks):
         super().__init__(None)
+        # print(f"Sampler indices: \n{indices_to_sample_from}")
         self.indices = indices_to_sample_from
         self.way = way
         self.total_tasks = total_tasks
     def __iter__(self):
-        return (
-            np.random.default_rng().choice(
+        sampled = (np.random.default_rng().choice(
                 self.indices,
                 size=self.way,
                 replace=False
-            ) for _ in range(self.total_tasks)
-        )
+            ) for _ in range(self.total_tasks))
+        # print(f"sampler: {sampled}")
+        return sampled
     def __len__(self):
         return self.total_tasks
 
@@ -143,10 +144,10 @@ def get_dataloader(class_names : list[str], max_number_of_shot : int,
       data_dictionary[class_label]['image'] = class_data
       data_dictionary[class_label]['label'] = np.repeat(class_label, repeats=l)
     # print(f"total number of samples: {l}")
-    return torch.utils.data.DataLoader(
+    return dataloader.DataLoader(
        dataset=LearningToBalanaceDataset(max_number_of_shot, number_of_query, way, data_dictionary),
        sampler=LearningToBalanceSampler(indices_to_sample_from=class_labels, way=way, total_tasks=total_tasks),
        drop_last=True,
        batch_size=batch_size,
-    #    collate_fn=identity,
+       collate_fn=identity,
     )

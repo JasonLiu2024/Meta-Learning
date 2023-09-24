@@ -22,7 +22,6 @@ LOG_INTERVAL = 10
 VAL_INTERVAL = LOG_INTERVAL * 5
 NUM_TEST_TASKS = 600
 
-
 class MAML:
     """Trains and assesses a MAML."""
 
@@ -206,13 +205,9 @@ class MAML:
         outer_loss_batch = []
         accuracies_support_batch = []
         accuracy_query_batch = []
-        for t in range(self.batch_size):
+        for task in task_batch:
             # images_support, labels_support, images_query, labels_query = task
-            images_support = task_batch[0][t].to(DEVICE)
-            print(f"images_support {images_support.shape}")
-            labels_support = task_batch[1][t].to(DEVICE)
-            images_query = task_batch[2][t].to(DEVICE)
-            labels_query = task_batch[3][t].to(DEVICE)
+            images_support, labels_support, images_query, labels_query = task
             # TODO: finish implementing this method.
             # For a given task, use the _inner_loop method to adapt, then
             # compute the MAML loss and other metrics.
