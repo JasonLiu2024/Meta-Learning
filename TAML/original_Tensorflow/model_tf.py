@@ -16,7 +16,7 @@ class LearningToBalance:
     self.inner_lr = args.inner_lr
 
     # placeholders. tr: train, te: test
-    xshape = [None, None, (self.xdim**2)*self.input_channel]
+    xshape = [None, None, (self.xdim**2) * self.input_channel]
     yshape = [None, None, self.numclass]
     self.episode = {
         'xtr': tf.placeholder(tf.float32, xshape, name='xtr'),

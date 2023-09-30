@@ -5,17 +5,15 @@ import numpy as np
 import torch
 from torch import nn
 import torch.nn.functional as F
-import util  # pylint: disable=unused-import
 from numpy.typing import NDArray
 from torch.utils.data.dataloader import DataLoader
 from encoder import InferenceNetwork
 
 NUM_INPUT_CHANNELS = 3
-NUM_HIDDEN_CHANNELS = 32
+NUM_HIDDEN_CHANNELS = 64
 KERNEL_SIZE = 3
 NUM_CONV_LAYERS = 4
 DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
-SUMMARY_INTERVAL = 10
 VAL_INTERVAL = 8
 NUM_TEST_TASKS = 600 # not sure what this is doing!
 
@@ -31,18 +29,15 @@ class TAML:
     batch_size:             number of Tasks per batch (NOT examples!)
     """
 
-    def __init__(self, output_dimension : int, max_shots : int, inner_loop_step_ct : int, 
+    def __init__(self, output_dimension : int, inner_loop_step_ct : int, 
         inner_learning_rate : float, learn_inner_learning_rate : bool, 
         outer_learning_rate : float, batch_size : int, encoder : InferenceNetwork,
-        use_omega : bool=True, use_zeta : bool=True, use_gamma : bool=True):
+        ):
         # number of tasks per batch
         self.batch_size = batch_size
         # encoder network
-        self.encoder = encoder.to(DEVICE)
+        self.encoder : InferenceNetwork = encoder.to(DEVICE)
         # encoder network's balancing variables
-        self.use_omega = use_omega # modify
-        self.use_zeta = use_zeta # modify
-        self.use_gamma = use_gamma # modify
         # parameters (initialization)
         meta_parameters : dict[str, torch.Tensor] = {}
         """model architecture:
@@ -139,31 +134,24 @@ class TAML:
     def _omega_modify_inner_loss(self, 
         omega: torch.Tensor, inner_loop_loss : torch.Tensor) -> torch.Tensor:
         """change task-specific loss with omega (class-level balancing varaible)"""
-        if self.use_omega:
-            return torch.sum(inner_loop_loss * F.softmax(omega, -1))
-        else:
-            return inner_loop_loss # there's nothing to sum! CE loss just one number!
+        return torch.sum(inner_loop_loss * F.softmax(omega, -1))
     def _zeta_update_initialization(self, zeta : dict[str, torch.Tensor], theta : dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
         """update theta with zeta (task-level balancing variable)"""
-        if self.use_zeta:
-            for layer_key in zeta.keys():
-                # Specifically, we use z_train = 1 + z _test convolutional network weights 
-                # ... z_train = z _test for the biases
-                # which modifies the network parameters θ like: (let θ_0 be NEW initializtion)
-                if '_weight' in layer_key:
-                    # θ_0 = θ + zeta
-                    theta[layer_key] = theta[layer_key] * (1. + zeta[layer_key])
-                else: # '_b' in layer_key:
-                    # θ_0 = θ o zeta (o is custom operator, see below)
-                    theta[layer_key] = theta[layer_key] + zeta[layer_key]
+        for layer_key in zeta.keys():
+            # Specifically, we use z_train = 1 + z _test convolutional network weights 
+            # ... z_train = z _test for the biases
+            # which modifies the network parameters θ like: (let θ_0 be NEW initializtion)
+            if '_weight' in layer_key:
+                # θ_0 = θ + zeta
+                theta[layer_key] = theta[layer_key] * (1. + zeta[layer_key])
+            else: # '_b' in layer_key:
+                # θ_0 = θ o zeta (o is custom operator, see below)
+                theta[layer_key] = theta[layer_key] + zeta[layer_key]
         return theta
     def _gamma_modify_inner_step_learning_rate_updater(self, gamma_tensor : torch.Tensor, updater : torch.Tensor) -> torch.Tensor:
         """change learning rate with gamma (task-level balancing variable)"""
-        if self.use_gamma:
-            # TAML author's name for 'updater' is 'delta'
-            return updater * torch.exp(gamma_tensor)
-        else:
-            return updater
+        # TAML author's name for 'updater' is 'delta'
+        return updater * torch.exp(gamma_tensor)
     def _inner_loop(self, images_suppt : torch.Tensor, labels : torch.Tensor, train : bool, 
         # omega, zeta, gamma here are TAML's extra!
         omega : torch.Tensor, zeta : dict[str, torch.Tensor], gamma : dict[str, torch.Tensor]) -> tuple[
@@ -183,14 +171,16 @@ class TAML:
             for k, v in self._meta_parameters.items()
         }
         """TAML: update initialization with zeta"""
-        parameters = self._zeta_update_initialization(zeta, parameters)
+        if self.encoder.use_z == True:
+            parameters = self._zeta_update_initialization(zeta, parameters)
         for _ in range(self._num_inner_steps):
             predictions = self._forward(images_suppt, parameters)
-            accuracy = util.score(predictions, labels)
+            accuracy = score(predictions, labels)
             accuracy_suppt.append(accuracy)
             loss = F.cross_entropy(predictions, labels.to(torch.int64)) # just one number!
             """TAML: update loss with omega; doens't ruin .backward!"""
-            loss = self._omega_modify_inner_loss(omega, loss)
+            if self.encoder.use_o == True:
+                loss = self._omega_modify_inner_loss(omega, loss)
             # get grads, the gradient of the loss
             # we're Always doing a backpropagation here, since we need it to adapt to the current task
             # BUT:
@@ -206,10 +196,12 @@ class TAML:
             # update parameters (manually)
             for (layer_name, tensor), grad in zip(parameters.items(), grads):
                 "TAML: update inner loop learning rate with gamma"
-                parameters[layer_name] = tensor - self._gamma_modify_inner_step_learning_rate_updater(
-                    gamma[layer_name], updater=self._inner_lrs[layer_name] * grad)
+                if self.encoder.use_g == True:
+                    parameters[layer_name] = tensor - self._gamma_modify_inner_step_learning_rate_updater(
+                        gamma[layer_name], updater=self._inner_lrs[layer_name] * grad)
                 # gamma modifies the 'updater,' which is self._inner_lrs[layer_name] * grad (parameters subtract that thing!)
-                # parameters[layer_name] = tensor - self._inner_lrs[layer_name] * grad # original no-gamma version!
+                else:  
+                    parameters[layer_name] = tensor - self._inner_lrs[layer_name] * grad # original no-gamma version!
         return parameters, accuracy_suppt
 
     def _outer_step(self, task_batch : tuple[torch.Tensor], train : bool) -> tuple[
@@ -229,6 +221,11 @@ class TAML:
         accuracy_query_batch_list : list[float]= []
         for task in task_batch:
             images_suppt, labels_suppt, images_query, labels_query = task
+            # print(images_suppt.shape)
+            # print(labels_suppt.shape)
+            # print(images_query.shape)
+            # print(labels_query.shape)
+            """encoder extracts balancing varaibles for each task"""
             # getting these by themselves do NOT affect .backward()
             omega, gamma, zeta, KL = self.encoder(images_suppt, labels_suppt, do_sample=train)
             Cardinality_train = images_suppt.shape[0]
@@ -236,13 +233,14 @@ class TAML:
             # scale KL term w.r.t train and test set sizes
             KL /= (Cardinality_train + Cardinality_test)
             # adapt parameters from support set
+            """inner loop start"""
             parameters, accuracy_suppt = self._inner_loop(
                 images_suppt, labels_suppt, train, omega, zeta, gamma)
             # make predictions, using those updated parameters
             predictions = self._forward(images_query, parameters)
             # the loss is just one number (scalar value)
             loss = F.cross_entropy(predictions, labels_query.to(torch.int64))
-            accuracy_query = util.score(predictions, labels_query)
+            accuracy_query = score(predictions, labels_query)
             loss_batch_list.append(loss)
             accuracy_suppt_batch_list.append(accuracy_suppt)
             accuracy_query_batch_list.append(accuracy_query)
@@ -250,7 +248,7 @@ class TAML:
         accuracy_suppt_batch : NDArray = np.mean(accuracy_suppt_batch_list, axis=0) # shape=(batch_size, inner loop steps + 1)
         accuracy_query_batch : float = np.mean(accuracy_query_batch_list)
         return loss_batch, accuracy_suppt_batch, accuracy_query_batch
-    def train(self, dataloader_train : DataLoader, dataloader_valid : DataLoader) -> tuple[
+    def train(self, dataloader_train : DataLoader, dataloader_valid : DataLoader, valid_interval : int) -> tuple[
         list[float], list[float], list[float], list[float],]:
         """Optimize parameters; validate once in a while
         
@@ -278,7 +276,7 @@ class TAML:
             all_train_loss_list.append(train_loss_batch.item())
             all_train_accuracy_list.append(train_accuracy_query)
             # validate once in a while!
-            if iteration % VAL_INTERVAL == 0:
+            if iteration % valid_interval == 0:
                 print(f"\tIt's Validating time! iteration {iteration}")
                 valid_loss_list = []
                 valid_accuracy_suppt_thn_list = [] # accuracy before adaptation (first inner loop step)
@@ -347,3 +345,19 @@ class TAML:
         print(f"best test loss:     {np.min(all_test_loss_list)}")
         print(f"best test accuracy: {np.max(all_test_accuracy_list)}")
         return np.min(all_test_loss_list), np.min(all_test_accuracy_list)
+
+def score(logits : torch.Tensor, labels : torch.Tensor):
+    """mean accuracy of a model's predictions on a set of examples.
+        
+        logits: model prediction (logits form), shape=(# examples, # classes)
+        labels: classification labels from 0 to num_classes - 1, shape=(# examples,)
+    """
+    assert logits.dim() == 2
+    assert labels.dim() == 1
+    assert logits.shape[0] == labels.shape[0]
+    y = torch.argmax(logits, dim=-1) == labels
+    y = y.type(torch.float)
+    # print(f"score() logits: {logits.shape}")
+    # print(f"score() labels: {labels.shape} \n\t{labels}")
+    # print(f"score() predicts: {torch.argmax(logits, dim=-1).shape} \n\t{torch.argmax(logits, dim=-1)}")
+    return torch.mean(y).item()

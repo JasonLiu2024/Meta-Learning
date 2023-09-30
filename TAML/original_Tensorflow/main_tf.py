@@ -8,7 +8,7 @@ from collections import OrderedDict
 
 from model_tf import LearningToBalance
 from data_tf import Data
-from accumulator import Accumulator
+from accumulator_tf import Accumulator
 from misc_tf import get_train_op, print_balancing_variables, str2list
 
 parser = argparse.ArgumentParser()
@@ -77,10 +77,9 @@ os.environ['CUDA_VISIBLE_DEVICES'] = str(args.gpu_id)
 if not os.path.isdir(args.savedir):
   os.makedirs(args.savedir)
 
-
 # for generating episode
-id_data = OrderedDict([(data, Data(data)) for data in args.id_dataset])
-ood_data = OrderedDict([(data, Data(data)) for data in args.ood_dataset])
+id_data =   OrderedDict([(data, Data(data)) for data in args.id_dataset])
+ood_data =  OrderedDict([(data, Data(data)) for data in args.ood_dataset])
 
 # model object
 model = LearningToBalance(args)

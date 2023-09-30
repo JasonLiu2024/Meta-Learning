@@ -17,13 +17,14 @@ def show(image_array, title=""):
 class LearningToBalanaceDataset(dataset.Dataset):
   """a meta learning dataset; items are TASKs"""
   def __init__(self, max_number_of_shot : int, number_of_query : int, 
-               way : int, task_dictionary : dict):
+               way : int, task_dictionary : dict, imbalance : bool):
     super().__init__()
     # assert number_of_support + number_of_query <= NUMBER_OF_SAMPLES_EA_CLASS, "LearningToBalanaceDataset: support + query > number of samples ea class!"
     self.way = way
     self.max_number_of_shot = max_number_of_shot
     self.number_of_query = number_of_query
     self.dictionary = task_dictionary
+    self.imbalance = imbalance
   # def __getitem__(self, task_index):
   #   """class_indices: indices of classes we sample examples FROM
   #   there are WAY number of entries in class_indices
@@ -37,19 +38,22 @@ class LearningToBalanaceDataset(dataset.Dataset):
   #   return images_support, labels_support, images_query, labels_query
   def __getitem__(self, class_indices):
     # print(f"LearningToBalanceDataset: getting item from __getitem__")
-    # generate either task or class imbalance, by coin probability
-    coin = np.random.uniform(low=0, high=1, size=1)
-    # 'shot' is an array -> there's a specific shot for each class!
-    if coin > 0.5:
-        # print(f"\t->class imbalance: diff shots btwn classes")
-        # class imbalanace: different number of shots between classes
-        shot = np.random.choice(range(1, self.max_number_of_shot), size=self.way, replace=True)
-    else: 
-        # print(f"\t->task imbalance: same shots for ea class in this task")
-        # task imbalance: different number of shots between tasks
-        # BUT same number of shots WITHIN this task
-        shot = np.random.choice(range(1, self.max_number_of_shot), size=1)
-        shot = shot.repeat(repeats=self.way)
+    if self.imbalance == True:
+        # generate either task or class imbalance, by coin probability
+        coin = np.random.uniform(low=0, high=1, size=1)
+        # 'shot' is an array -> there's a specific shot for each class!
+        if coin > 0.5:
+            # print(f"\t->class imbalance: diff shots btwn classes")
+            # class imbalanace: different number of shots between classes
+            shot = np.random.choice(range(1, self.max_number_of_shot), size=self.way, replace=True)
+        else: 
+            # print(f"\t->task imbalance: same shots for ea class in this task")
+            # task imbalance: different number of shots between tasks
+            # BUT same number of shots WITHIN this task
+            shot = np.random.choice(range(1, self.max_number_of_shot), size=1)
+            shot = shot.repeat(repeats=self.way)
+    else:
+        shot = np.repeat(a=np.asarray([self.max_number_of_shot]), repeats=self.way)
     images_support = []
     labels_support = []
     images_query = []
@@ -128,7 +132,7 @@ def identity(x):
 
 def get_dataloader(class_names : list[str], max_number_of_shot : int, 
                    number_of_query : int, way : int, total_tasks : int,
-                   batch_size : int):
+                   batch_size : int, imbalance : bool):
     """total_task: e.g. in training, total_task = number of training tasks"""
     data_dictionary = {}
     l = 0
@@ -143,9 +147,10 @@ def get_dataloader(class_names : list[str], max_number_of_shot : int,
       data_dictionary[class_label] = {}
       data_dictionary[class_label]['image'] = class_data
       data_dictionary[class_label]['label'] = np.repeat(class_label, repeats=l)
+      data_dictionary[class_label]['name']  = class_name
     # print(f"total number of samples: {l}")
     return dataloader.DataLoader(
-       dataset=LearningToBalanaceDataset(max_number_of_shot, number_of_query, way, data_dictionary),
+       dataset=LearningToBalanaceDataset(max_number_of_shot, number_of_query, way, data_dictionary, imbalance),
        sampler=LearningToBalanceSampler(indices_to_sample_from=class_labels, way=way, total_tasks=total_tasks),
        drop_last=True,
        batch_size=batch_size,

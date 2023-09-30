@@ -1,4 +1,4 @@
-from accumulator import Accumulator
+from accumulator_tf import Accumulator
 import numpy as np
 import tensorflow as tf
 
