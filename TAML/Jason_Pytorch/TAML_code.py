@@ -293,6 +293,7 @@ class TAML:
                     valid_accuracy_suppt_now_list.append(valid_accuracy_suppt[-1])
                     valid_accuracy_query_list.append(valid_accuracy_query)
                     # record:
+                    # print(f"all valid loss, appended: {valid_loss_batch.item()}")
                     all_valid_loss_list.append(valid_loss_batch.item())
                     all_valid_accuracy_list.append(valid_accuracy_query)
                 # average out losses over the many Batches
@@ -335,13 +336,6 @@ class TAML:
             all_test_accuracy_list.append(test_accuracy_query)
         mean = np.mean(accuracies)
         std = np.std(accuracies)
-        # mean_95_confidence_interval = 1.96 * std / np.sqrt(NUM_TEST_TASKS)
-        # print(
-        #     # f'\tAccuracy over test tasks: '
-        #     f'\t average accuracy:   {mean:.3f}'
-        #     f'\n\t standard deviation: {std:.3f}'
-        #     # f'95% confidence interval {mean_95_confidence_interval:.3f}'
-        # )
         print(f"best test loss:     {np.min(all_test_loss_list)}")
         print(f"best test accuracy: {np.max(all_test_accuracy_list)}")
         return np.min(all_test_loss_list), np.min(all_test_accuracy_list)

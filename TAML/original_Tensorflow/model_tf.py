@@ -94,6 +94,7 @@ class LearningToBalance:
       alpha = self._get_param('alpha', reuse=reuse)
 
     xtr, ytr, xte, yte = inputs
+    print("xtr:", type(xtr.shape))
 
     # generate the three balancing variables
     omega, gamma, z, kl = self.encoder.forward(

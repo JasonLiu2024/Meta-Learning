@@ -5,23 +5,25 @@ class Data:
   def __init__(self, dataset_name):
     self.dataset_name = dataset_name
     path = os.path.join('data', dataset_name)
+    # print("Data::dataset name:", dataset_name)
+    # print("Data::dataset folder", str(path))
 
     if dataset_name in ['cifar', 'mimgnet', 'aircraft', 'quickdraw', 'vgg_flower']:
       # meta-training set
-      x = np.load(os.path.join(path, 'train.npy'), encoding='bytes')
+      x = np.load(os.path.join(path, 'train.npy'), encoding='bytes', allow_pickle=True)
       self.C_mtr = len(x)
       self.N_mtr = [len(xx) for xx in x]
       self.x_mtr = [np.reshape(x[i], [self.N_mtr[i], -1]) for i in range(self.C_mtr)]
 
     # meta-validation set
     if not dataset_name in ['traffic', 'fashion-mnist']:
-      x = np.load(os.path.join(path, 'valid.npy'), encoding='bytes')
+      x = np.load(os.path.join(path, 'valid.npy'), encoding='bytes', allow_pickle=True)
       self.C_mval = len(x)
       self.N_mval = [len(xx) for xx in x]
       self.x_mval = [np.reshape(x[i], [self.N_mval[i], -1]) for i in range(self.C_mval)]
 
     # meta-test set
-    x = np.load(os.path.join(path, 'test.npy'), encoding='bytes')
+    x = np.load(os.path.join(path, 'test.npy'), encoding='bytes', allow_pickle=True)
     self.C_mte = len(x)
     self.N_mte = [len(xx) for xx in x]
     self.x_mte = [np.reshape(x[i], [self.N_mte[i], -1]) for i in range(self.C_mte)]
