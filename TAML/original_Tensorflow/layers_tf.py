@@ -13,8 +13,10 @@ exp = tf.exp
 normal = tf.distributions.Normal
 
 def kl_diagnormal_stdnormal(q):
+  print("q dtype: ", q.dtype)
   qshape = q.mean().shape
   p = normal(tf.zeros(qshape), tf.ones(qshape))
+  print("p dtype: ", p.dtype)
   return tf.distributions.kl_divergence(q, p)
 
 # layers

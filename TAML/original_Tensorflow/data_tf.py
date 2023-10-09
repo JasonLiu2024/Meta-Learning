@@ -47,6 +47,7 @@ class Data:
       # sample WAY number of classes
       classes = np.random.choice(
           range(C), size=args.way, replace=False)
+      print("classes: ", classes)
 
       # both class and task imbalance (w/ half and half probability)
       if mode == 1:
@@ -83,7 +84,9 @@ class Data:
         xte.append(x_c[shot[i]:])
         # make labels
         y = np.zeros(args.way); y[i] = 1.
-        ytr.append(np.tile(np.expand_dims(y,0), [shot[i],1]))
+        ytr_member = np.tile(np.expand_dims(y,0), [shot[i],1])
+        print("y_tr dimension for current class: ", ytr_member.shape)
+        ytr.append(ytr_member)
         yte.append(np.tile(np.expand_dims(y,0), [args.query,1]))
 
       xtr = np.concatenate(xtr, 0)

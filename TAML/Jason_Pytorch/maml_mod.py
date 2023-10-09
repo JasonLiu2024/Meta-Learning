@@ -1,4 +1,4 @@
-"""Implementation of model-agnostic meta-learning for Omniglot."""
+"""Implementation of Model-Agnostic Meta-Learning algorithm"""
 
 import argparse
 import os
@@ -11,17 +11,8 @@ from torch import autograd
 from torch.utils import tensorboard
 from numpy.typing import NDArray
 from torch.utils.data import dataset, sampler, dataloader
-
-# import omniglot
 import util
 
-NUM_INPUT_CHANNELS = 3
-NUM_HIDDEN_CHANNELS = 64
-KERNEL_SIZE = 3
-NUM_CONV_LAYERS = 4
-DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
-SUMMARY_INTERVAL = 10
-SAVE_INTERVAL = 100
 LOG_INTERVAL = 10
 VAL_INTERVAL = LOG_INTERVAL * 5
 NUM_TEST_TASKS = 600
@@ -117,8 +108,7 @@ class Network_convolution_then_linear(Network_with_second_back_propagation):
                 weight=parameter[f'convolution_weight{layer}'],
                 bias=parameter[f'convolution_bias{layer}'],
                 stride=1,
-                padding='same'
-            )
+                padding='same')
             x = F.batch_norm(x, None, None, training=True)
             x = F.relu(x)
         x = torch.mean(x, dim=[2, 3])
@@ -245,7 +235,8 @@ class MAML:
         accuracy_query = np.mean(accuracy_query_batch_list)
         return outer_loss, accuracies_support, accuracy_query
 
-    def train(self, dataloader_train : dataloader.DataLoader, dataloader_val : dataloader.DataLoader):
+    def train(self, dataloader_train : dataloader.DataLoader, 
+              dataloader_val : dataloader.DataLoader) -> tuple[list[float], ...]:
         """Train the MAML.
         -
         1. Optimizes MAML parameter with ```dataloader train``` 
@@ -277,9 +268,7 @@ class MAML:
                     f'post-adaptation support accuracy: '
                     f'{accuracies_support[-1]:.3f}, '
                     f'post-adaptation query accuracy: '
-                    f'{accuracy_query:.3f}'
-                )
-
+                    f'{accuracy_query:.3f}')
             if i_step % VAL_INTERVAL == 0:
                 losses = []
                 accuracies_pre_adapt_support = []
@@ -304,21 +293,23 @@ class MAML:
                     f'{accuracy_post_adapt_support:.3f}, '
                     f'post-adaptation query accuracy: '
                     f'{accuracy_post_adapt_query:.3f}')
+        return loss_list, accuracy_list
 
-    def test(self, dataloader_test : dataloader.DataLoader):
+    def test(self, dataloader_test : dataloader.DataLoader) -> list[float]:
         """Evaluate the MAML on test tasks.
         -
         Inputs:
             1 ```dataloader test``` (DataLoader): loader for test tasks
         """
-        accuracies = []
+        accuracy_list = []
         for task_batch in dataloader_test:
             _, _, accuracy_query = self._outer_step(task_batch, we_are_training=False)
-            accuracies.append(accuracy_query)
-        mean = np.mean(accuracies)
-        std = np.std(accuracies)
+            accuracy_list.append(accuracy_query)
+        mean = np.mean(accuracy_list)
+        std = np.std(accuracy_list)
         mean_95_confidence_interval = 1.96 * std / np.sqrt(NUM_TEST_TASKS)
         print(
             f'Accuracy over {NUM_TEST_TASKS} test tasks: '
             f'mean {mean:.3f}, '
             f'95% confidence interval {mean_95_confidence_interval:.3f}')
+        return accuracy_list

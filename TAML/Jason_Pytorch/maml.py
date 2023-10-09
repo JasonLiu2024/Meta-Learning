@@ -1,4 +1,7 @@
-"""Implementation of model-agnostic meta-learning for Omniglot."""
+"""Implementation of model-agnostic meta-learning for Omniglot.
+-
+Content:
+    1 ```MAML```"""
 
 import argparse
 import os
@@ -266,6 +269,8 @@ class MAML:
         print(f'Starting training at iteration {self._start_train_step}.')
         loss_list = []
         accuracy_list = []
+        loss_list_val = []
+        accuracy_list_val = []
         for i_step, task_batch in enumerate(
                 dataloader_train,
                 start=self._start_train_step
@@ -330,6 +335,8 @@ class MAML:
                 accuracy_post_adapt_query = np.mean(
                     accuracies_post_adapt_query
                 )
+                loss_list_val.append(loss)
+                accuracy_list_val.append(accuracy_post_adapt_query)
                 print(
                     f'Validation: '
                     f'loss: {loss:.3f}, '
@@ -340,25 +347,26 @@ class MAML:
                     f'post-adaptation query accuracy: '
                     f'{accuracy_post_adapt_query:.3f}'
                 )
-                writer.add_scalar('loss/val', loss, i_step)
-                writer.add_scalar(
-                    'val_accuracy/pre_adapt_support',
-                    accuracy_pre_adapt_support,
-                    i_step
-                )
-                writer.add_scalar(
-                    'val_accuracy/post_adapt_support',
-                    accuracy_post_adapt_support,
-                    i_step
-                )
-                writer.add_scalar(
-                    'val_accuracy/post_adapt_query',
-                    accuracy_post_adapt_query,
-                    i_step
-                )
+                # writer.add_scalar('loss/val', loss, i_step)
+                # writer.add_scalar(
+                #     'val_accuracy/pre_adapt_support',
+                #     accuracy_pre_adapt_support,
+                #     i_step
+                # )
+                # writer.add_scalar(
+                #     'val_accuracy/post_adapt_support',
+                #     accuracy_post_adapt_support,
+                #     i_step
+                # )
+                # writer.add_scalar(
+                #     'val_accuracy/post_adapt_query',
+                #     accuracy_post_adapt_query,
+                #     i_step
+                # )
 
             # if i_step % SAVE_INTERVAL == 0:
             #     self._save(i_step)
+        return loss_list, accuracy_list, loss_list_val, accuracy_list_val
 
     def test(self, dataloader_test):
         """Evaluate the MAML on test tasks.
