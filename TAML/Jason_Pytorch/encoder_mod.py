@@ -6,12 +6,13 @@ import torch
 import torch.nn as nn
 
 def statistics_pooling(incoming : torch.Tensor, cardinality : torch.Tensor):
+    """Get summary statistics for embeddings"""
     variance, mean = torch.var_mean(input=incoming, dim=0)
     cardinality = torch.tile(input=cardinality, dims=mean.shape)
     return torch.stack([mean, variance, cardinality], 1)
 
 def initialize_weights_encoder(layer : torch.nn.Module) -> None:
-    """Initialize weights for encoder networks NN1, NN2"""
+    """Initialize weights for encoder networks"""
     if isinstance(layer, nn.Conv2d):
         torch.nn.init.normal_(tensor=layer.weight, mean=0.0, std=0.02)
         torch.nn.init.zeros_(tensor=layer.bias) # we're using bias
@@ -27,8 +28,10 @@ class InferenceNetwork(nn.Module):
         2 ```number of shots``` (int)\n
         3 ```use zeta``` (bool)\n
         4 ```use gamma``` (bool)\n
-        5 ```use omega``` (bool)
-    Forward() arguments
+        5 ```use omega``` (bool)\n
+        6 ```main network number of convolution layers``` (int): from the MAML network this encoder works with!\n
+        7 ```main network number of hidden channels``` (int): i.e. number of intermediary filters\n
+    forward() arguments
         1 ```incoming``` (torch.Tensor): input data, shape(N, C, H, W)
         2 ```labels``` (torch.Tensor): shape (N, 1)
         3 ```we_are_training``` (bool): if training, we sample from distributions """
@@ -74,7 +77,7 @@ class InferenceNetwork(nn.Module):
             nn.Linear(in_features=3, out_features=4),
             nn.ReLU())
         self.NN2_part_2.apply(initialize_weights_encoder)
-        # omega
+        # omega <- layer dimension will change, depending on its setting
         self.NN_omega_optional = nn.Sequential(
             nn.Linear(in_features=256, out_features=64),
             nn.ReLU())
@@ -112,7 +115,6 @@ class InferenceNetwork(nn.Module):
             nn.Linear(in_features=64, out_features=2*32*4),
             nn.ReLU())
         self.NN_zeta_sigma.apply(initialize_weights_encoder)
-
     def get_omega_posterior(self, all_classes_summary : torch.Tensor) -> torch.distributions.Distribution:
         all_class_summary_encoded = self.NN_omega_optional(all_classes_summary) if self.use_omega else all_classes_summary
         # print("all class summary encoded ", all_class_summary_encoded.shape)
@@ -138,6 +140,7 @@ class InferenceNetwork(nn.Module):
         posterior_zeta = torch.distributions.Normal(loc=mu, scale=torch.nn.functional.softplus(sigma))
         return posterior_zeta
     def get_kl_divergence(self, posterior_distribution : torch.distributions.Distribution) -> torch.Tensor:
+        """Kullback-Leibler divergence of incoming distribution and the standard normal distribution"""
         posterior_shape = posterior_distribution.mean.shape
         standard_normal_distribution = torch.distributions.Normal(torch.zeros(size=posterior_shape).to(self.device), torch.ones(posterior_shape).to(self.device))
         # find KL(q || p)
